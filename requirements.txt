@@ -11,6 +11,11 @@ alembic>=1.13
 psycopg[binary]>=3.2
 jinja2>=3.1
 itsdangerous>=2.2
+# Required by FastAPI to parse Form(...) fields — every clock button and admin
+# form posts through it. No module imports it by name, so it looks unused and
+# it is NOT: without it the app raises at import time and the machine will not
+# boot. Cost a failed deploy on 2026-08-20. Do not remove.
+python-multipart>=0.0.9
 
 # Removed 2026-08-20: MetaTrader5. Nothing imported it, it has nothing to do
 # with time tracking, and it is a Windows-only wheel - so run_time_bot.bat and
