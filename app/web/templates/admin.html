@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_edit_form.html" import edit_form with context %}
+{% block title %}Admin — Time Tracker{% endblock %}
+
+{% block body %}
+<header class="topbar">
+  <div><div class="who">Admin console</div><div class="muted">{{ now.strftime('%a %d %b %H:%M') }}</div></div>
+  <nav class="topnav">
+    <a href="/">My clock</a>
+    <a href="/admin/payroll">Payroll</a>
+  </nav>
+</header>
+
+{% if message %}<p class="flash ok">{{ message }}</p>{% endif %}
+{% if error %}<p class="flash bad">{{ error }}</p>{% endif %}
+
+<section class="card">
+  <h2>On shift now <span class="count">{{ board|length }}</span></h2>
+  {% for entry in board %}
+    <div class="board-row {% if entry.stale %}stale{% endif %}">
+      <span class="dot {{ entry.shift.status|lower }}"></span>
+      <span class="name">{{ entry.user.full_name }}</span>
+      <span class="muted">{{ format_time(entry.shift.in_time) }}</span>
+      <span class="grow"></span>
+      <span>{{ format_duration(entry.worked_seconds) }}</span>
+      {% if entry.stale %}<span class="badge bad">since {{ entry.shift.date }}</span>{% endif %}
+    </div>
+  {% else %}
+    <p class="muted">Nobody is clocked in.</p>
+  {% endfor %}
+</section>
+
+{% if exceptions %}
+<section class="card">
+  <h2>Needs attention <span class="count bad">{{ exceptions|length }}</span></h2>
+  {% for item in exceptions %}
+    <details class="exception">
+      <summary>
+        <strong>{{ item.row.user.full_name }}</strong>
+        <span class="muted">{{ item.shift.date }} · shift {{ item.row.id }}</span>
+        <span class="badge bad">{{ item.problems|length }}</span>
+      </summary>
+      <ul>{% for problem in item.problems %}<li>{{ problem }}</li>{% endfor %}</ul>
+      {{ edit_form(item.row, item.shift) }}
+    </details>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Week</h2>
+  <div class="toolbar">
+    <a class="button" href="/admin?week_of={{ prev_week }}">← Previous</a>
+    <span class="muted">week of {{ monday }}</span>
+    <a class="button" href="/admin?week_of={{ next_week }}">Next →</a>
+  </div>
+
+  <div class="scroll-x">
+    <table class="week">
+      <thead>
+        <tr><th>Employee</th>{% for day in days %}<th>{{ day.strftime('%a %d') }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+          <tr>
+            <td class="name">{{ user.full_name }}</td>
+            {% for day in days %}
+              <td>
+                {% for entry in grid.get(user.user_id, {}).get(day, []) %}
+                  <details class="cell">
+                    <summary>
+                      {% if entry.worked_seconds is none %}
+                        <span class="bad">check</span>
+                      {% else %}
+                        {{ format_duration(entry.worked_seconds) }}
+                      {% endif %}
+                    </summary>
+                    {{ edit_form(entry.row, entry.shift) }}
+                  </details>
+                {% endfor %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Rates and advances</h2>
+  <div class="forms">
+    <form class="form-grid" method="post" action="/admin/rate">
+      <h3>Set hourly rate</h3>
+      <label>Employee
+        <select name="user_id">
+          {% for user in users %}<option value="{{ user.user_id }}">{{ user.full_name }} — {{ format_money(user.hourly_rate_cents) }}/h</option>{% endfor %}
+        </select>
+      </label>
+      <label>Amount per hour <input name="amount" placeholder="18.00" required></label>
+      <label>Effective from <input type="date" name="effective_from"></label>
+      <p class="hint">Past months keep the rate that applied then.</p>
+      <button>Save rate</button>
+    </form>
+
+    <form class="form-grid" method="post" action="/admin/advance">
+      <h3>Record an advance</h3>
+      <label>Employee
+        <select name="user_id">
+          {% for user in users %}<option value="{{ user.user_id }}">{{ user.full_name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Amount <input name="amount" placeholder="100.00" required></label>
+      <label>Note <input name="note"></label>
+      <button>Save advance</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

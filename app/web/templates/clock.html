@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{{ t('today') }} — Time Tracker{% endblock %}
+
+{% block body %}
+<header class="topbar">
+  <div>
+    <div class="who">{{ user.full_name }}</div>
+    <div class="muted">{{ now.strftime('%a %d %b') }}</div>
+  </div>
+  <nav class="topnav">
+    <a href="/me/shifts">{{ t('my_shifts') }}</a>
+    {% if is_admin %}<a href="/admin">Admin</a>{% endif %}
+    <form method="post" action="/signout"><button class="link">{{ t('sign_out') }}</button></form>
+  </nav>
+</header>
+
+{% if message %}<p class="flash ok">{{ message }}</p>{% endif %}
+{% if error %}<p class="flash bad">{{ error }}</p>{% endif %}
+
+<section class="clockface {{ state.status|lower }}">
+  <p class="state-label">
+    {% if state.is_working %}{{ t('on_shift') }}
+    {% elif state.is_on_break %}{{ t('on_break') }}
+    {% else %}{{ t('not_working') }}{% endif %}
+  </p>
+
+  <p class="timer" id="timer"
+     data-worked="{{ state.worked_seconds }}"
+     data-running="{{ '1' if state.is_working else '0' }}">
+    {{ format_hhmm(state.worked_seconds) }}
+  </p>
+
+  {% if state.started_at and not state.is_off %}
+    <p class="muted">
+      {{ t('started_at') }} {{ format_time(state.started_at) }}
+      {% if state.break_seconds %} · {{ t('break_total') }} {{ format_duration(state.break_seconds) }}{% endif %}
+    </p>
+  {% endif %}
+
+  <div class="actions">
+    {% for action in state.available_actions() %}
+      <form method="post" action="/clock/{{ action }}">
+        <button class="big {{ action }}">
+          {% if action == 'in' %}{{ t('clock_in') }}
+          {% elif action == 'out' %}{{ t('clock_out') }}
+          {% elif action == 'break' %}{{ t('start_break') }}
+          {% else %}{{ t('end_break') }}{% endif %}
+        </button>
+      </form>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>{{ t('this_month') }}</h2>
+  <dl class="figures">
+    <div><dt>{{ t('hours') }}</dt><dd>{{ format_duration(summary.work_seconds) }}</dd></div>
+    <div><dt>{{ t('gross') }}</dt><dd>{{ format_money(summary.gross_cents) }}</dd></div>
+    <div><dt>{{ t('advances') }}</dt><dd>{{ format_money(summary.advance_cents) }}</dd></div>
+    <div class="emphasis"><dt>{{ t('net') }}</dt><dd>{{ format_money(summary.net_cents) }}</dd></div>
+  </dl>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // The clock keeps counting between page loads; the server figure is the
+  // source of truth and this only advances it locally.
+  (function () {
+    var el = document.getElementById('timer');
+    if (!el || el.dataset.running !== '1') return;
+    var worked = parseInt(el.dataset.worked, 10);
+    var started = Date.now();
+    setInterval(function () {
+      var total = worked + Math.floor((Date.now() - started) / 1000);
+      var h = String(Math.floor(total / 3600)).padStart(2, '0');
+      var m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+      var s = String(total % 60).padStart(2, '0');
+      el.textContent = h + ':' + m + ':' + s;
+    }, 1000);
+  })();
+</script>
+{% endblock %}

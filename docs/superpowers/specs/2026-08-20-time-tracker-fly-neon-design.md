@@ -1,7 +1,7 @@
 # Time Tracker — Fly + Neon re-architecture and UI redesign
 
 Date: 2026-08-20
-Status: DESIGN — awaiting owner review
+Status: IMPLEMENTED (application + migration). Not yet deployed; see §12.
 Repo: `Time-Tracker` (github.com/shrimpzoneaus-dot/Time-Tracker)
 
 ## 1. Context
@@ -14,6 +14,9 @@ database holds:
 - 6 advances, 2026-06-10 → 2026-07-03
 - 2 shifts in an open state — **both stale, neither is anyone currently working**
   (see §13)
+- Shift 19 (a 16.5 h hand-entered overnight row) was **deleted on owner
+  instruction 2026-08-20**; June for user 8865482786 went $1,008.83 → $711.83.
+  Backup: `time_tracker_backup_20260820_delete_shift19.db`.
 
 It runs as two Python processes against a single local SQLite file:
 

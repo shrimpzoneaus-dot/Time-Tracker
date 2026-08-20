@@ -1,0 +1,24 @@
+{% macro edit_form(row, shift) %}
+<form class="edit" method="post" action="/admin/timesheet/{{ row.id }}">
+  <label>In <input name="in_time" value="{{ format_time(shift.in_time) if shift.in_time else '' }}" placeholder="HH:MM"></label>
+  <label>Out <input name="out_time" value="{{ format_time(shift.out_time) if shift.out_time else '' }}" placeholder="HH:MM"></label>
+  <label class="check">
+    <input type="checkbox" name="out_next_day" value="1"
+           {% if shift.in_time and shift.out_time and shift.out_time.date() != shift.in_time.date() %}checked{% endif %}>
+    finished next day
+  </label>
+  <label>Break (min) <input name="break_minutes" value="{{ (shift.total_break_seconds // 60) }}"></label>
+  <label>Status
+    <select name="status">
+      {% for option in ['WORKING', 'ON_BREAK', 'FINISHED'] %}
+        <option value="{{ option }}" {% if shift.status == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Reason <input name="reason" placeholder="why this changed"></label>
+  <div class="row">
+    <button>Save</button>
+    <button formaction="/admin/timesheet/{{ row.id }}/delete" class="danger">Remove</button>
+  </div>
+</form>
+{% endmacro %}

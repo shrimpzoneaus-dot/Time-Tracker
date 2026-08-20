@@ -1,0 +1,160 @@
+/* Functional baseline, mobile-first.
+   The visual identity is NOT settled here - three directions still go to the
+   owner for a pick. This is the restrained version that makes the app usable
+   in the meantime: legible, thumb-reachable, honest about state. */
+
+:root {
+  --bg: #0f1417;
+  --surface: #171e23;
+  --surface-2: #1e272d;
+  --line: #2b363d;
+  --text: #e7edf1;
+  --muted: #8fa3af;
+  --accent: #35c08a;
+  --warn: #e0a33e;
+  --bad: #e2634f;
+  --radius: 14px;
+  --gap: 16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.shell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--gap) var(--gap) 48px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* --- chrome --- */
+
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); }
+.who { font-weight: 650; }
+.muted { color: var(--muted); font-size: 0.875rem; }
+.topnav { display: flex; align-items: center; gap: 14px; }
+.topnav a, .link {
+  color: var(--muted); text-decoration: none; font-size: 0.875rem;
+  background: none; border: 0; padding: 0; cursor: pointer; font: inherit;
+}
+.topnav a:hover, .link:hover { color: var(--text); }
+
+.flash { padding: 10px 14px; border-radius: 10px; margin: 0; font-size: 0.9375rem; }
+.flash.ok { background: rgba(53, 192, 138, 0.12); color: var(--accent); }
+.flash.bad { background: rgba(226, 99, 79, 0.12); color: var(--bad); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+.card h2 { margin: 0 0 12px; font-size: 1rem; letter-spacing: 0.01em; }
+.card h3 { margin: 0 0 10px; font-size: 0.9375rem; }
+.centred { text-align: center; }
+
+/* --- the clock face --- */
+
+.clockface {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 32px 18px;
+  text-align: center;
+}
+.clockface.on_break { border-color: rgba(224, 163, 62, 0.4); }
+.clockface.working { border-color: rgba(53, 192, 138, 0.4); }
+
+.state-label {
+  margin: 0; text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 0.75rem; color: var(--muted);
+}
+.timer {
+  margin: 8px 0 4px;
+  font-size: clamp(3rem, 18vw, 4.5rem);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.working .timer { color: var(--accent); }
+.on_break .timer { color: var(--warn); }
+
+.actions { display: flex; gap: 12px; justify-content: center; margin-top: 22px; flex-wrap: wrap; }
+button.big {
+  min-height: 56px; min-width: 150px; padding: 0 28px;
+  border: 0; border-radius: 999px; cursor: pointer;
+  font: 600 1rem/1 inherit; color: #08120d; background: var(--accent);
+}
+button.big.out { background: var(--bad); color: #fff; }
+button.big.break, button.big.resume { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+button.big:active { transform: translateY(1px); }
+
+/* --- figures --- */
+
+.figures { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 0; }
+.figures div { background: var(--surface-2); border-radius: 10px; padding: 12px; }
+.figures dt { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.figures dd { margin: 4px 0 0; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.figures .emphasis dd { color: var(--accent); }
+
+/* --- admin --- */
+
+.board-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.board-row:last-child { border-bottom: 0; }
+.board-row.stale { opacity: 0.75; }
+.grow { flex: 1; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.dot.on_break { background: var(--warn); }
+.count { background: var(--surface-2); border-radius: 999px; padding: 2px 9px; font-size: 0.8125rem; color: var(--muted); }
+.count.bad, .badge.bad { background: rgba(226, 99, 79, 0.15); color: var(--bad); }
+.badge { border-radius: 999px; padding: 2px 9px; font-size: 0.75rem; }
+.warn { color: var(--warn); }
+.bad { color: var(--bad); }
+
+.exception { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.exception summary { cursor: pointer; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.exception ul { margin: 10px 0; padding-left: 20px; color: var(--warn); font-size: 0.875rem; }
+
+.scroll-x { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 0.8125rem; }
+td.money, .money { font-variant-numeric: tabular-nums; }
+table.week td { min-width: 92px; }
+.cell summary { cursor: pointer; font-variant-numeric: tabular-nums; }
+
+.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.button, button {
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 9px; padding: 9px 14px; cursor: pointer; font: inherit; text-decoration: none;
+}
+button.danger { border-color: rgba(226, 99, 79, 0.5); color: var(--bad); }
+
+.forms { display: grid; gap: var(--gap); }
+.form-grid { display: grid; gap: 10px; }
+.form-grid label, .edit label { display: grid; gap: 4px; font-size: 0.8125rem; color: var(--muted); }
+.form-grid label.check, .edit label.check { display: flex; align-items: center; gap: 8px; }
+input, select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 10px; font: inherit; width: 100%;
+}
+input[type="checkbox"] { width: auto; }
+.hint { color: var(--muted); font-size: 0.75rem; margin: 0; }
+.edit { display: grid; gap: 10px; padding: 12px; background: var(--surface-2); border-radius: 10px; margin-top: 10px; }
+.edit .row { display: flex; gap: 10px; }
+
+@media (min-width: 640px) {
+  .figures { grid-template-columns: repeat(4, 1fr); }
+  .forms { grid-template-columns: 1fr 1fr; }
+  .edit { grid-template-columns: repeat(3, 1fr); align-items: end; }
+  .edit .row { grid-column: 1 / -1; }
+}

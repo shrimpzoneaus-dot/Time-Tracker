@@ -234,13 +234,23 @@ def _legacy_work_seconds(row: dict) -> int:
 
 
 def load(plan: MigrationPlan, database_url: str) -> None:
-    from sqlalchemy import create_engine, func, select
+    from sqlalchemy import create_engine, func, inspect, select
     from sqlalchemy.orm import Session as OrmSession
 
-    from app.db.models import Advance, Base, RateHistory, Timesheet, User
+    from app.db.models import Advance, RateHistory, Timesheet, User
 
     engine = create_engine(database_url, future=True)
-    Base.metadata.create_all(engine)
+
+    # Alembic owns the schema. This script only moves data. create_all() here
+    # would be a second, unversioned source of DDL truth - the exact mistake
+    # documented in shrimpzone-concierge/fly.toml.
+    missing = {"users", "timesheets", "advances", "rate_history"} - set(
+        inspect(engine).get_table_names()
+    )
+    if missing:
+        raise SystemExit(
+            f"Target is missing tables: {sorted(missing)}. Run `alembic upgrade head` first."
+        )
 
     with OrmSession(engine) as session:
         existing = session.scalar(select(func.count()).select_from(Timesheet))
@@ -257,11 +267,15 @@ def load(plan: MigrationPlan, database_url: str) -> None:
 
         # bulk_insert_mappings supplies explicit ids, which leaves Postgres
         # sequences at 1 and the next insert colliding on the primary key.
-        for table, rows in (("timesheets", plan.timesheets), ("advances", plan.advances)):
-            if rows:
-                session.execute(
-                    _reset_sequence_sql(table), {"next_id": max(r["id"] for r in rows) + 1}
-                )
+        # SQLite has no sequences, so a local rehearsal skips this.
+        if engine.dialect.name == "postgresql":
+            for table, rows in (("timesheets", plan.timesheets), ("advances", plan.advances)):
+                if rows:
+                    session.execute(
+                        _reset_sequence_sql(table), {"next_id": max(r["id"] for r in rows) + 1}
+                    )
+        else:
+            print(f"({engine.dialect.name}: skipping sequence reset - Postgres only)")
 
         session.commit()
 

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Time Tracker{% endblock %}
+{% block body %}
+<section class="card centred">
+  <h1>Time Tracker</h1>
+  <p>{{ t('sign_in_prompt') }}</p>
+  {% if request.query_params.get('expired') %}
+    <p class="flash bad">{{ t('link_expired') }}</p>
+  {% endif %}
+</section>
+{% endblock %}

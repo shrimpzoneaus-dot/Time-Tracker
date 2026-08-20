@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ t('my_shifts') }} — Time Tracker{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div><div class="who">{{ t('my_shifts') }}</div><div class="muted">{{ month }}</div></div>
+  <nav class="topnav">
+    <a href="/">{{ t('today') }}</a>
+    {% if is_admin %}<a href="/admin">Admin</a>{% endif %}
+  </nav>
+</header>
+
+<section class="card">
+  <dl class="figures">
+    <div><dt>{{ t('hours') }}</dt><dd>{{ format_duration(summary.work_seconds) }}</dd></div>
+    <div><dt>{{ t('gross') }}</dt><dd>{{ format_money(summary.gross_cents) }}</dd></div>
+    <div><dt>{{ t('advances') }}</dt><dd>{{ format_money(summary.advance_cents) }}</dd></div>
+    <div class="emphasis"><dt>{{ t('net') }}</dt><dd>{{ format_money(summary.net_cents) }}</dd></div>
+  </dl>
+</section>
+
+<section class="card">
+  <table>
+    <thead><tr><th>Date</th><th>In</th><th>Out</th><th>{{ t('break_total') }}</th><th>{{ t('hours') }}</th></tr></thead>
+    <tbody>
+      {% for entry in entries %}
+        <tr>
+          <td>{{ entry.shift.date }}</td>
+          <td>{{ format_time(entry.shift.in_time) }}</td>
+          <td>{{ format_time(entry.shift.out_time) }}</td>
+          <td>{{ format_duration(entry.shift.total_break_seconds) }}</td>
+          <td>{% if entry.worked_seconds is none %}<span class="bad">check</span>{% else %}{{ format_duration(entry.worked_seconds) }}{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="muted">{{ t('no_shifts') }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

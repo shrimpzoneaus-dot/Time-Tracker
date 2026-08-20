@@ -15,7 +15,13 @@ core is landing alongside it and nothing has been cut over yet.
 | `dashboard_time_tracker.py` | **live** | Flask admin dashboard on `127.0.0.1:5000` |
 | `time_tracker.db` | **live** | SQLite. Gitignored. The only copy of the payroll history. |
 | `app/domain/` | new | Shift state machine and pay arithmetic — the single owner of both |
-| `app/db/models.py` | new | SQLAlchemy schema for Postgres |
+| `app/db/` | new | SQLAlchemy models, query layer, session factory |
+| `app/services.py` | new | Use cases the web app and the bot both call |
+| `app/web/` | new | FastAPI staff clock screen + admin console |
+| `app/bot/` | new | Telegram handlers (webhook, not polling) |
+| `app/main.py` | new | The app: web + webhook in one process |
+| `alembic/` | new | Versioned migrations — the only source of DDL |
+| `Dockerfile`, `fly.toml` | new | Fly.io deploy, syd, own Neon database |
 | `scripts/migrate_sqlite_to_neon.py` | new | One-way, self-verifying SQLite → Postgres migration |
 | `tests/` | new | Including a parity suite that pins payroll against the real data |
 | `docs/superpowers/specs/` | new | The design this rebuild follows |
@@ -28,6 +34,18 @@ copy .env.example .env    # then fill BOT_TOKEN and ADMIN_CHAT_ID
 python time_tracking_bot.py
 python dashboard_time_tracker.py   # http://127.0.0.1:5000
 ```
+
+## Running the new app locally
+
+```powershell
+copy .env.example .env    # fill DATABASE_URL, BOT_TOKEN, PUBLIC_URL, secrets
+$env:COOKIE_SECURE = "0"  # local http only
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+```
+
+Staff clock in at `/`, admins at `/admin`, health at `/healthz`. Sign-in is a
+one-tap link the bot sends — there are no passwords.
 
 ## Running the tests
 

@@ -8,7 +8,7 @@ did.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
@@ -19,8 +19,36 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    TypeDecorator,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class UtcDateTime(TypeDecorator):
+    """Always store and return timezone-aware UTC.
+
+    Postgres timestamptz does this natively; SQLite silently drops the offset
+    and hands back a naive datetime, which then explodes on any comparison
+    with an aware one. Normalising in one place means the domain code never
+    has to care which backend it is talking to.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 class Base(DeclarativeBase):
@@ -58,15 +86,15 @@ class Timesheet(Base):
     # midnight keeps the date it started on; out_time carries the real instant.
     date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    in_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    out_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    break_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    in_time: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    out_time: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    break_start: Mapped[datetime | None] = mapped_column(UtcDateTime)
     total_break_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Additive: /reset_today used to DELETE rows outright. It soft-deletes now,
     # so a disputed correction is still answerable.
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     user: Mapped[User] = relationship(back_populates="timesheets")
 
@@ -83,8 +111,8 @@ class Advance(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False)
     amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     __table_args__ = (Index("idx_advances_user_date", "user_id", "date"),)
 
@@ -107,7 +135,7 @@ class RateHistory(Base):
     )
     hourly_rate_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
     created_by: Mapped[int | None] = mapped_column(BigInteger)
 
     user: Mapped[User] = relationship(back_populates="rates")
@@ -132,7 +160,7 @@ class EditLog(Base):
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     changed_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (Index("idx_edit_log_entity", "entity", "entity_id"),)
@@ -147,8 +175,8 @@ class Session(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.user_id"), nullable=False
     )
-    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issued_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     __table_args__ = (Index("idx_sessions_user", "user_id"),)
