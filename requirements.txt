@@ -1,0 +1,4 @@
+MetaTrader5
+python-telegram-bot>=20,<22
+python-dotenv>=1.0.0
+Flask>=3.0.0

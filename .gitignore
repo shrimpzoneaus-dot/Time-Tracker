@@ -1,0 +1,16 @@
+.env
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+backups/
+*.log
+*.csv
+*.xlsx
+time_tracker_local_old_*.db
+time_tracker_backup_*.db
+server_time_tracker.db
