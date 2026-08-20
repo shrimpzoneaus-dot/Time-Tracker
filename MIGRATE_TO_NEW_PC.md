@@ -35,7 +35,7 @@ Open `.env` and fill:
 
 ```env
 BOT_TOKEN=your_telegram_bot_token_here
-ADMIN_CHAT_ID=6393446109
+ADMIN_CHAT_ID=your_admin_telegram_id_here
 APP_TIMEZONE=Australia/Sydney
 ```
 

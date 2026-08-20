@@ -1,4 +1,18 @@
-MetaTrader5
+# Legacy surfaces - still running in production until cutover.
 python-telegram-bot>=20,<22
 python-dotenv>=1.0.0
 Flask>=3.0.0
+
+# New stack: FastAPI web + bot webhook, SQLAlchemy/Alembic against Neon.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0.36
+alembic>=1.13
+psycopg[binary]>=3.2
+jinja2>=3.1
+itsdangerous>=2.2
+
+# Removed 2026-08-20: MetaTrader5. Nothing imported it, it has nothing to do
+# with time tracking, and it is a Windows-only wheel - so run_time_bot.bat and
+# run_dashboard.bat, which both pip install this file on every launch, failed
+# on any clean machine.

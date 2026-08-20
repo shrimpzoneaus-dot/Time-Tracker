@@ -35,7 +35,7 @@ run_time_bot.bat
 Admin mac dinh hien tai:
 
 ```text
-6393446109
+<your_admin_telegram_id>
 ```
 
 Lenh admin trong Telegram:
@@ -57,9 +57,9 @@ Lenh admin trong Telegram:
 Vi du tinh luong:
 
 ```text
-/set_rate 6393446109 16
+/set_rate <your_admin_telegram_id> 16
 /ung 100$
-/salary 2026-06 6393446109
+/salary 2026-06 <your_admin_telegram_id>
 ```
 
 Bot tinh:
