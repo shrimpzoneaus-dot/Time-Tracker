@@ -27,13 +27,24 @@ async def lifespan(app: FastAPI):
     app.state.bot = None
 
     if settings.bot_token:
-        from app.bot.handlers import build_application
+        # A bad token must not take the web app down with it. Staff clocking in
+        # on the web do not need Telegram to be working, and a misconfigured
+        # BOT_TOKEN used to crash startup outright - the whole app rebooting in
+        # a loop because one of its two surfaces was misconfigured.
+        try:
+            from app.bot.handlers import build_application
 
-        application = build_application(settings.bot_token)
-        await application.initialize()
-        await application.start()
-        app.state.bot = application
-        logger.info("Telegram application started in webhook mode")
+            application = build_application(settings.bot_token)
+            await application.initialize()
+            await application.start()
+            app.state.bot = application
+            logger.info("Telegram application started in webhook mode")
+        except Exception:
+            logger.exception(
+                "Telegram failed to start - the web app is serving, but the bot is "
+                "disabled until BOT_TOKEN is fixed"
+            )
+            app.state.bot = None
     else:
         logger.warning("BOT_TOKEN is not set - the Telegram surface is disabled")
 

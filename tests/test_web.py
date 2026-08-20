@@ -326,3 +326,35 @@ def test_webhook_requires_the_header_as_well_as_the_path(client):
 
 def test_healthz(client):
     assert client.get("/healthz").json() == {"ok": True}
+
+
+def test_a_broken_bot_token_does_not_take_down_the_web_app(tmp_path, monkeypatch):
+    """Staff clocking in on the web do not need Telegram to be working.
+
+    A placeholder BOT_TOKEN used to raise InvalidToken inside lifespan and
+    crash startup, rebooting the machine in a loop.
+    """
+    from app import config
+    from app.db import session as db_session
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{(tmp_path / 'b.db').as_posix()}")
+    monkeypatch.setenv("BOT_TOKEN", "your_real_bot_token")
+    config.get_settings.cache_clear()
+    db_session.get_engine.cache_clear()
+    db_session.get_sessionmaker.cache_clear()
+
+    from fastapi.testclient import TestClient
+
+    from app.db.models import Base
+    from app.main import app
+
+    Base.metadata.create_all(db_session.get_engine())
+
+    with TestClient(app) as c:
+        assert c.get("/healthz").json() == {"ok": True}
+        assert c.get("/signin").status_code == 200
+        assert app.state.bot is None  # bot disabled, web app alive
+
+    config.get_settings.cache_clear()
+    db_session.get_engine.cache_clear()
+    db_session.get_sessionmaker.cache_clear()
