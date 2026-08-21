@@ -116,6 +116,10 @@ button.big:active { transform: translateY(1px); }
 .dot.on_break { background: var(--warn); }
 .count { background: var(--surface-2); border-radius: 999px; padding: 2px 9px; font-size: 0.8125rem; color: var(--muted); }
 .count.bad, .badge.bad { background: rgba(226, 99, 79, 0.15); color: var(--bad); }
+
+/* The board polls itself; this says so, quietly, and says when it stops. */
+.live-status { float: right; font-weight: 400; font-size: 0.75rem; color: var(--muted); }
+.live-status.error { color: var(--warn); }
 .badge { border-radius: 999px; padding: 2px 9px; font-size: 0.75rem; }
 .warn { color: var(--warn); }
 .bad { color: var(--bad); }

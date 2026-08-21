@@ -63,9 +63,36 @@ Verified: 7/7 there, `62 passed, 1 skipped` under `.venv`, plus a headless-brows
 run confirming the clock-in appeared with **one page-load event** (never
 reloaded) and that in-progress typing survived a concurrent bot write.
 
-⚠️ **The rebuild's `/admin` console has the same gap** — its only `setInterval`
-is a local ticking clock, not a data poll. It needs the same treatment before
-cutover, or the new site will feel exactly as stale as the old one did.
+## The rebuilt `/admin` console now updates itself too (2026-08-22)
+
+It had the identical gap — its only `setInterval` was `clock.html`'s local
+ticking timer, which advances a number the page already had rather than
+fetching a new one. So the board said someone was on shift long after they
+clocked out on Telegram.
+
+`admin.html`'s "On shift now" section is now the shared partial
+`_board.html`, rendered both on load and by a new **`GET /admin/fragment/board`**,
+which the open console polls every 10 s (and immediately on regaining focus).
+Both `/admin` and the fragment are marked `no-store`. The fragment is
+admin-only, like the console: 401 signed out, 403 for an employee.
+
+⚠️ **Only the board is polled, deliberately.** The week grid and the
+exceptions list hold the inline edit forms and their `<details>` open state; a
+swap would eat a half-typed clock-out correction. The board has no inputs, so
+it needs no dirty-field guard — which is why it is the only thing swapped.
+
+⚠️ The poll compares each response against **the previous response text**,
+not against `board.innerHTML`. The browser normalises markup it has parsed, so
+the innerHTML comparison never matches and every poll would rebuild the DOM.
+
+⚠️ **The staff clock page (`/`) still has the gap.** Its timer counts up
+locally forever: clock out on Telegram and the web page keeps counting. Not
+fixed here — it is a different shape of fix (the status, not just a table,
+has to change) and no test pins it yet.
+
+Verified: `69 passed, 1 skipped` under `.venv` (7 new, each watched failing
+first), the legacy suite still 7/7, and a real render confirming the fragment
+body appears byte-identical inside the console.
 
 ## Git
 
@@ -82,7 +109,7 @@ a0d9115 fix(deps): declare python-multipart — the image could not boot without
 faa1c60 feat(core): tested shift/payroll domain, verifying SQLite->Neon migration
 ```
 
-62 passing + 1 skipped: `.\.venv\Scripts\python.exe -m pytest -q`
+69 passing + 1 skipped: `.\.venv\Scripts\python.exe -m pytest -q`
 (the skip is the legacy-dashboard module above; run it on the system Python)
 
 ## Secrets

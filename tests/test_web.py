@@ -367,3 +367,113 @@ def test_a_broken_bot_token_does_not_take_down_the_web_app(tmp_path, monkeypatch
     config.get_settings.cache_clear()
     db_session.get_engine.cache_clear()
     db_session.get_sessionmaker.cache_clear()
+
+
+# --- the admin console must not go stale -----------------------------------
+#
+# The legacy dashboard rendered once and never asked the database again, so a
+# clock-in punched on Telegram was invisible until someone hit Refresh. The
+# rebuilt console shipped with exactly the same gap: its only setInterval is
+# clock.html's local ticking timer, which advances a number it already had
+# rather than fetching a new one. These tests pin the polling contract.
+
+BOARD_FRAGMENT = "/admin/fragment/board"
+
+
+def clock_in_on_telegram(user_id: int, name: str) -> int:
+    """A shift opened by the bot process, which the console never learns about."""
+    from app.db import repo
+    from app.db.models import Timesheet
+    from app.db.session import session_scope
+    from app.domain import clock, shifts
+
+    with session_scope() as session:
+        repo.upsert_user(session, user_id, name)
+        row = Timesheet(
+            user_id=user_id,
+            date=clock.business_date(clock.now()),
+            status=shifts.STATUS_WORKING,
+            in_time=clock.now(),
+            total_break_seconds=0,
+        )
+        session.add(row)
+        session.flush()
+        return row.id
+
+
+def clock_out_on_telegram(shift_id: int) -> None:
+    from app.db.models import Timesheet
+    from app.db.session import session_scope
+    from app.domain import clock, shifts
+
+    with session_scope() as session:
+        row = session.get(Timesheet, shift_id)
+        row.out_time = clock.now()
+        row.status = shifts.STATUS_FINISHED
+
+
+def test_the_console_can_update_itself(client):
+    """Without this the board is right on load and wrong for the rest of the day."""
+    sign_in(client, 999, "The Boss")
+    page = client.get("/admin").text
+    assert BOARD_FRAGMENT in page
+    assert "setInterval" in page
+
+
+def test_the_board_fragment_is_admin_only(client):
+    """It carries every open shift and every employee name; /admin is 403 for a
+    reason and a second door onto the same data must be locked the same way."""
+    assert client.get(BOARD_FRAGMENT).status_code == 401
+    sign_in(client, 111, "Employee One")
+    assert client.get(BOARD_FRAGMENT).status_code == 403
+
+
+def test_the_poll_picks_up_a_clock_in(client):
+    sign_in(client, 999, "The Boss")
+
+    before = client.get(BOARD_FRAGMENT)
+    assert before.status_code == 200
+    assert "Night Owl" not in before.text
+
+    clock_in_on_telegram(111, "Night Owl")
+
+    after = client.get(BOARD_FRAGMENT)
+    assert "Night Owl" in after.text
+
+
+def test_the_poll_picks_up_a_clock_out(client):
+    sign_in(client, 999, "The Boss")
+    shift_id = clock_in_on_telegram(111, "Night Owl")
+    assert "Night Owl" in client.get(BOARD_FRAGMENT).text
+
+    clock_out_on_telegram(shift_id)
+
+    assert "Night Owl" not in client.get(BOARD_FRAGMENT).text
+
+
+def test_the_console_and_its_fragment_are_not_cacheable(client):
+    """The bot writes continuously, so a cached console is always a wrong one."""
+    sign_in(client, 999, "The Boss")
+    for path in ("/admin", BOARD_FRAGMENT):
+        response = client.get(path)
+        assert "no-store" in (response.headers.get("cache-control") or ""), path
+
+
+def test_the_fragment_and_the_console_cannot_drift(client):
+    """Both must render from one template, or the polled board slowly stops
+    matching the board you saw on load."""
+    sign_in(client, 999, "The Boss")
+    clock_in_on_telegram(111, "Night Owl")
+
+    fragment = client.get(BOARD_FRAGMENT).text
+    assert fragment.strip() in client.get("/admin").text
+
+
+def test_employee_names_are_escaped_in_the_fragment(client):
+    """The fragment is swapped in as markup, so escaping must happen server-side."""
+    sign_in(client, 999, "The Boss")
+    clock_in_on_telegram(111, "<script>alert(1)</script>")
+
+    fragment = client.get(BOARD_FRAGMENT).text
+    assert "<script>alert(1)</script>" not in fragment
+    assert "&lt;script&gt;" in fragment

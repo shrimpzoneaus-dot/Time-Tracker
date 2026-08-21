@@ -20,6 +20,18 @@ from app.web.templating import templates
 
 router = APIRouter(prefix="/admin")
 
+# The bot writes continuously, so a cached console is always a wrong console.
+NO_STORE = {"Cache-Control": "no-store"}
+
+
+def board_context(session: OrmSession, now) -> dict:
+    """Everything _board.html needs, shared by the console and its poll."""
+    return {
+        "board": on_shift_now(session, as_of=now),
+        "format_time": clock.format_time,
+        "format_duration": clock.format_duration,
+    }
+
 
 @router.get("", response_class=HTMLResponse)
 def console(
@@ -49,9 +61,9 @@ def console(
         request,
         "admin.html",
         {
+            **board_context(session, now),
             "admin": admin,
             "now": now,
-            "board": on_shift_now(session, as_of=now),
             "users": repo.list_users(session),
             "grid": grid,
             "days": [monday + timedelta(days=i) for i in range(7)],
@@ -59,12 +71,28 @@ def console(
             "prev_week": (monday - timedelta(days=7)).isoformat(),
             "next_week": (monday + timedelta(days=7)).isoformat(),
             "exceptions": exceptions(session, monday - timedelta(days=90), sunday, as_of=now),
-            "format_time": clock.format_time,
-            "format_duration": clock.format_duration,
             "format_money": payroll.format_money,
             "message": request.query_params.get("msg"),
             "error": request.query_params.get("error"),
         },
+        headers=NO_STORE,
+    )
+
+
+@router.get("/fragment/board", response_class=HTMLResponse)
+def board_fragment(
+    request: Request,
+    admin: User = Depends(auth.require_admin),
+    session: OrmSession = Depends(get_session),
+):
+    """The live board alone, re-rendered for the open console to poll.
+
+    Deliberately only the board. The week grid and the exceptions list carry
+    the inline edit forms, and swapping those under an admin would wipe a
+    half-typed clock-out correction mid-keystroke.
+    """
+    return templates.TemplateResponse(
+        request, "_board.html", board_context(session, clock.now()), headers=NO_STORE
     )
 
 
