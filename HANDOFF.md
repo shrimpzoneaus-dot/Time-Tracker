@@ -71,6 +71,30 @@ Open that link on a phone, clock in, take a break, clock out, then look at
 `/admin`. That exercises the whole stack against Neon without touching
 anything live.
 
+### Smoke test: DONE (2026-08-20)
+
+A full clock cycle was run against the live deployment and passed:
+
+```
+not clocked in -> on shift -> on break -> on shift -> not clocked in
+```
+
+The admin console, week grid, payroll page and CSV export all render, and the
+CSV totalled correctly.
+
+⚠️ **Smoke testing writes rows into the target database**, and the migration
+refuses a target that already holds timesheets — so those rows would block
+cutover. Neon was cleared afterwards and is empty again. If you smoke test
+again, clear it before migrating:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\reset_target_db.py         # show what is there
+.\.venv\Scripts\python.exe scripts\reset_target_db.py --yes   # delete it
+```
+
+It refuses to touch a target that looks like real payroll history (more than 10
+timesheets, or any advance at all).
+
 ## Then, in order
 
 1. **Settle the three stale shifts** in the LEGACY database, while the old
