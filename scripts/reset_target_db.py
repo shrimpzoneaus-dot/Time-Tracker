@@ -27,8 +27,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv()
-
 # Above these, the target is not a scratch database any more.
 PRODUCTION_LOOKS_LIKE_TIMESHEETS = 10
 DATA_TABLES = ("sessions", "edit_log", "rate_history", "advances", "timesheets", "users")
@@ -61,6 +59,11 @@ def build_engine(url: str):
 
 
 def main() -> int:
+    # Loaded here, not at import: importing this module must not
+    # mutate the environment of whatever imported it (it silently broke
+    # six unrelated tests by injecting ADMIN_CHAT_ID from .env).
+    load_dotenv()
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--yes", action="store_true", help="actually delete")
     parser.add_argument(

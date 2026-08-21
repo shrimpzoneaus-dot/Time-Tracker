@@ -8,17 +8,24 @@ from urllib.parse import unquote
 
 import pytest
 
-os.environ.setdefault("APP_TIMEZONE", "Australia/Sydney")
-os.environ.setdefault("SESSION_SECRET", "test-secret")
-os.environ.setdefault("TELEGRAM_WEBHOOK_SECRET", "hook-secret")
-os.environ.setdefault("ADMIN_CHAT_ID", "999")
-os.environ.setdefault("COOKIE_SECURE", "0")  # TestClient speaks plain http
+# setenv, not setdefault: any other test module that imports something calling
+# load_dotenv() would otherwise seed these from the real .env first and win.
+TEST_ENV = {
+    "APP_TIMEZONE": "Australia/Sydney",
+    "SESSION_SECRET": "test-secret",
+    "TELEGRAM_WEBHOOK_SECRET": "hook-secret",
+    "ADMIN_CHAT_ID": "999",
+    "COOKIE_SECURE": "0",  # TestClient speaks plain http
+}
 
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     from app import config
     from app.db import session as db_session
+
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
 
     db_path = tmp_path / "test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path.as_posix()}")
@@ -337,6 +344,8 @@ def test_a_broken_bot_token_does_not_take_down_the_web_app(tmp_path, monkeypatch
     from app import config
     from app.db import session as db_session
 
+    for key, value in TEST_ENV.items():
+        monkeypatch.setenv(key, value)
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{(tmp_path / 'b.db').as_posix()}")
     monkeypatch.setenv("BOT_TOKEN", "your_real_bot_token")
     config.get_settings.cache_clear()

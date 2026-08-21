@@ -23,8 +23,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv()
-
 from app.db import repo  # noqa: E402
 from app.db.models import User  # noqa: E402
 
@@ -51,6 +49,11 @@ def build_engine(url: str):
 
 
 def main() -> int:
+    # Loaded here, not at import: importing this module must not
+    # mutate the environment of whatever imported it (it silently broke
+    # six unrelated tests by injecting ADMIN_CHAT_ID from .env).
+    load_dotenv()
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--user-id", type=int, required=True, help="Telegram user id")
     parser.add_argument("--name", default="", help="display name (new users only)")
