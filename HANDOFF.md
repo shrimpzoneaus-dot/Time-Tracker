@@ -1,4 +1,4 @@
-# Handoff — 2026-08-20
+# Handoff — 2026-08-20, amended 2026-08-21
 
 Read this first when picking the work back up.
 
@@ -6,8 +6,9 @@ Read this first when picking the work back up.
 
 The rebuilt app is **deployed and running** at
 https://shrimpzone-timetracker.fly.dev against an **empty** Neon database. The
-legacy bot and Flask dashboard are **still the live system**. Nothing has been
-cut over. No staff have been told anything.
+legacy Flask dashboard is **still the live system**, but the **legacy bot has
+been stopped on purpose** — so nothing is currently recording attendance from
+Telegram at all. Nothing has been cut over. No staff have been told anything.
 
 ## What is live and verified
 
@@ -17,8 +18,9 @@ cut over. No staff have been told anything.
 | Neon (project "Shrimp Zone", db `neondb`, branch `production`) | Postgres 18.6, ap-southeast-2, **empty** |
 | Alembic | `0001_baseline` applied — all 6 tables created |
 | Telegram bot on Fly | initialises correctly, **no webhook registered** so it receives nothing |
-| Legacy bot + dashboard | untouched, still polling, still the source of truth |
-| `time_tracker.db` | untouched — 102 timesheets, 4 users, 6 advances |
+| Legacy bot | **STOPPED on purpose** (owner, 2026-08-21). No process running. Telegram attendance is NOT being recorded — do not assume a quiet day means a quiet day. Restart with `run_time_bot.bat`. |
+| Legacy dashboard | still the source of truth, and **changed 2026-08-21** — see "Dashboard now updates itself" below |
+| `time_tracker.db` | untouched by this project — 102 timesheets, 4 users, 6 advances. Newest row is **2026-08-20**; nothing since, which follows from the bot being stopped. |
 
 Endpoint check at handoff time:
 
@@ -32,18 +34,56 @@ Endpoint check at handoff time:
 /tg/<correct>   500 on an empty body  (503 would mean the bot is disabled)
 ```
 
+## Dashboard now updates itself (2026-08-21)
+
+`dashboard_time_tracker.py` was a one-shot server-rendered page. It rendered
+correctly on load and then **never asked the database again**, so a clock-in
+punched on Telegram sat in SQLite, invisible, until someone hit Refresh. The bot
+was never at fault — a fresh request always returned the right data.
+
+The day and salary table bodies are now shared Jinja templates rendered by both
+the full page and a new `/fragment/tables` endpoint, so the two cannot drift.
+The page polls it every 10 s and swaps only what changed. Responses are marked
+`no-store`.
+
+⚠️ **Not a `<meta http-equiv="refresh">`, deliberately.** The day table has
+inline in/out/break/status editors, and a periodic reload would wipe a half-typed
+correction mid-keystroke. The swap is skipped while any field in the table is
+focused or differs from its server value.
+
+⚠️ **The tests skip under `.venv`.** The legacy dashboard is Flask on the system
+Python; the rebuild's venv deliberately carries no Flask and must not grow one.
+Run them directly instead — no pytest needed:
+
+```powershell
+python tests\test_dashboard_live_updates.py
+```
+
+Verified: 7/7 there, `62 passed, 1 skipped` under `.venv`, plus a headless-browser
+run confirming the clock-in appeared with **one page-load event** (never
+reloaded) and that in-progress typing survived a concurrent bot write.
+
+⚠️ **The rebuild's `/admin` console has the same gap** — its only `setInterval`
+is a local ticking clock, not a data poll. It needs the same treatment before
+cutover, or the new site will feel exactly as stale as the old one did.
+
 ## Git
 
 Branch **`rebuild/domain-core-and-migration`**, pushed, **not merged to `main`**.
 
 ```
+22b673e fix(dashboard): the web page never asked the database again
+bb9dfbe fix(tests): test_web no longer depends on being imported first
+2699c4a feat(scripts): guarded target reset; smoke test passed on the live app
+ad59576 docs: handoff — deployed, verified, awaiting smoke test and cutover
 1e1253e fix(main): a broken BOT_TOKEN no longer takes the web app down
 a0d9115 fix(deps): declare python-multipart — the image could not boot without it
 05f42e3 feat(app): FastAPI clock screen + admin console, Telegram sign-in, Fly/Neon deploy
 faa1c60 feat(core): tested shift/payroll domain, verifying SQLite->Neon migration
 ```
 
-56 tests passing: `.\.venv\Scripts\python.exe -m pytest -q`
+62 passing + 1 skipped: `.\.venv\Scripts\python.exe -m pytest -q`
+(the skip is the legacy-dashboard module above; run it on the system Python)
 
 ## Secrets
 

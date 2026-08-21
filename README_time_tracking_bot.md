@@ -90,7 +90,7 @@ dashboard cho go xong roi moi cap nhat, khong ghi de len cai dang nhap.
 Kiem tra (dung system Python, khong phai .venv):
 
 ```powershell
-python tests	est_dashboard_live_updates.py
+python tests\test_dashboard_live_updates.py
 ```
 
 Dashboard co:
