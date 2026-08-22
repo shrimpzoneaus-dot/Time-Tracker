@@ -1,14 +1,19 @@
-# Handoff — 2026-08-20, amended 2026-08-21
+# Handoff — 2026-08-20, amended 2026-08-22
 
 Read this first when picking the work back up.
 
 ## Where things stand in one line
 
 The rebuilt app is **deployed and running** at
-https://shrimpzone-timetracker.fly.dev against an **empty** Neon database. The
-legacy Flask dashboard is **still the live system**, but the **legacy bot has
-been stopped on purpose** — so nothing is currently recording attendance from
-Telegram at all. Nothing has been cut over. No staff have been told anything.
+https://shrimpzone-timetracker.fly.dev against an **empty** Neon database.
+Nothing has been cut over. No staff have been told anything.
+
+🔴 **Cutover is BLOCKED.** The legacy bot was stopped on *this* machine on
+2026-08-21, but a live bot is still polling the token **from another machine**
+(proved 2026-08-22 — see the BLOCKER section). Telegram attendance is being
+recorded into that machine's SQLite file, so the `time_tracker.db` here is a
+stale copy and `migrate_sqlite_to_neon.py` would migrate the wrong data.
+**Find that machine and retrieve its database before doing anything else.**
 
 ## What is live and verified
 
