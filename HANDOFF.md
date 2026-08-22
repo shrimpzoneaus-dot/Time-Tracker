@@ -61,6 +61,49 @@ Anything recorded in the new system after cutover would NOT be in it.
 * Client-side JS is still reviewed, not machine-verified — no browser tooling
   on this machine.
 
+## 🔴 SECURITY: the legacy dashboard was public for 2.5 months
+
+Found 2026-08-22 while checking what the second VPS service ran.
+`time-tracker-dashboard.service` ran `dashboard_time_tracker.py` — the legacy
+Flask dashboard — **listening on 0.0.0.0:5000 with `ufw` explicitly allowing
+5000/tcp from Anywhere**, and that dashboard has **no authentication at all**.
+
+| | |
+|---|---|
+| Exposed from | **2026-06-11 09:30** (service first started) |
+| Exposed until | **2026-08-22 08:43** (stopped during cutover) |
+| Unique IPs that got `200` on the root page | **798** |
+| Data on that page | employee full names, Telegram user ids, hours, **hourly rates**, monthly salary totals, advances |
+| Write endpoints reachable without login | `/update-timesheet`, `/set-rate`, `/add-advance`, `/reset-today` |
+
+Scanners were actively probing it (`/mcp`, `/api/mcp`, `/sse`, `POST /` → 405).
+
+**Successful writes from outside** appear on 2026-07-13 (five
+`POST /update-timesheet` → 302 from `202.80.150.76`) and 2026-07-24
+(`202.80.150.56`). Those look like the owner editing timesheets from a phone
+or home connection — the pattern is a person correcting rows minute by minute —
+but **it cannot be proven**, because the dashboard never authenticated anyone.
+Anyone among those 798 could have done the same.
+
+### Done about it
+
+* dashboard **stopped and disabled** (part of cutover);
+* **port 5000 removed from `ufw`** — only 22/tcp is open now.
+
+Reopen only if the legacy dashboard is ever needed again for rollback, and
+bind it to `127.0.0.1` over an SSH tunnel rather than exposing it:
+`ufw allow 5000/tcp` re-opens it.
+
+⚠️ The rebuilt app does NOT repeat this mistake: `/admin` requires
+`auth.require_admin`, which is exactly why that check was added
+(`app/web/auth.py` says so — "the legacy dashboard had no check at all, which
+was survivable only because it was bound to 127.0.0.1"). On the VPS it was not
+bound to localhost, so it was not survivable.
+
+**Owner decision still needed:** whether to treat this as a data breach for
+the four staff whose names, rates and pay were readable. That is a judgement
+call about obligations to them, not a technical one.
+
 ## What is live and verified
 
 | Thing | State |
