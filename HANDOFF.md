@@ -18,7 +18,7 @@ Telegram at all. Nothing has been cut over. No staff have been told anything.
 | Neon (project "Shrimp Zone", db `neondb`, branch `production`) | Postgres 18.6, ap-southeast-2, **empty** |
 | Alembic | `0001_baseline` applied — all 6 tables created |
 | Telegram bot on Fly | initialises correctly, **no webhook registered** so it receives nothing |
-| Legacy bot | **STOPPED on purpose** (owner, 2026-08-21). No process running. Telegram attendance is NOT being recorded — do not assume a quiet day means a quiet day. Restart with `run_time_bot.bat`. |
+| Legacy bot | 🔴 **RUNNING ON ANOTHER MACHINE** (proved 2026-08-22, see below). It was stopped on THIS machine on 2026-08-21; that is not the same thing. Telegram attendance IS being recorded — into that machine's SQLite file, not this one. **Do not start a local bot: two pollers on one token fight and drop updates.** |
 | Legacy dashboard | still the source of truth, and **changed 2026-08-21** — see "Dashboard now updates itself" below |
 | `time_tracker.db` | untouched by this project — 102 timesheets, 4 users, 6 advances. Newest row is **2026-08-20**; nothing since, which follows from the bot being stopped. |
 
@@ -279,50 +279,60 @@ Backups land in `backups/`, which is gitignored. They are real pay data -
 never commit one. Retention is unbounded; the files are small (tens of KB), so
 this is fine for years, but nothing prunes them.
 
-## ⚠️ Two ways to fake a "second bot instance" (learned 2026-08-22)
+## 🔴 BLOCKER: a second bot is live on another machine (proved 2026-08-22)
 
-`Conflict: terminated by other getUpdates request` does NOT reliably mean a
-second bot is running somewhere. It has two much more likely causes, and an
-hour went into chasing the wrong one.
+**Do not cut over until the source-of-truth question below is answered.**
 
-**1. Probing with `getUpdates` terminates the running bot's long-poll.**
-Calling `https://api.telegram.org/bot<TOKEN>/getUpdates` to "check whether the
-bot is polling" IS a competing getUpdates. The probe does not observe the
-state, it destroys it - and this bot registers no error handler, so it
-surfaces as an unhandled exception. `getWebhookInfo` is safe; `getUpdates` is
-not.
+### The proof
 
-**2. Force-killing the bot leaves Telegram holding the connection.**
-`Stop-Process -Force` kills the process without closing its socket, and
-Telegram keeps that getUpdates registered for roughly 60-90 seconds. Restart
-inside that window and the new instance conflicts with the corpse of the old
-one, once every ~35 s, looking exactly like a rival instance. **Wait ~90 s
-between stopping and restarting the bot**, or close its console window
-(a clean exit) instead of killing it.
+With **zero** bot processes on this machine and five full minutes of silence
+beforehand, a held `getUpdates` long-poll was **terminated after 5 seconds by
+another getUpdates request**. An earlier run was terminated after 32 s.
 
-How to actually check whether the bot is alive, in order of preference:
-send it `/start` from Telegram; read its console window; check the process
-list. If you must use `getUpdates`, stop every local bot first - then a 409
-genuinely does mean something off-machine holds the token.
+That is conclusive in a way a plain 409 is not. A lingering registration from a
+force-killed process can only *reject* a new request up front; it cannot
+*issue* a fresh request 5 or 32 seconds later and take the slot away. Something
+alive did that, and it is not on this machine.
 
-**Settled 2026-08-22: there is no second bot.** Eight `getUpdates` samples
-over ~64 s with every local bot stopped never once returned 409 — a rival bot
-running PTB's retry loop would have been mid-request at least once. The Fly
-app also cannot be a culprit: `build_application` sets `.updater(None)`, so it
-is structurally incapable of polling, as are the local uvicorn processes.
+Also ruled out, individually: the Fly app (`fly logs` shows only `/healthz`,
+and `build_application` sets `.updater(None)`, so it is structurally incapable
+of polling), the local uvicorn processes (same code path), and a duplicate
+local process (`bot.log` carries exactly one startup line; the two PIDs are the
+Windows Store Python shim and its child).
 
-**Revised figure: a force-killed poller's registration lingers up to ~3
-minutes, not 60–90 s.** A bot started at 11:07:10 conflicted until 11:08:24 —
-about three minutes after the instance killed at 11:05:30.
+### What it means for cutover
 
-⚠️ **The conflicts are self-healing. Do not "fix" them by restarting.** PTB
-backs off (6 s → 21 s → …) and recovers by itself once the old registration
-expires. Every restart resets that clock and starts a fresh ~3-minute conflict
-window, which is what turned a self-correcting hiccup into an hour of chasing
-a bot that did not exist. **Start it once, then wait three quiet minutes.**
+**That machine's SQLite file is the real payroll record.** `time_tracker.db`
+here has been frozen at 102 timesheets, newest **2026-08-20**, which is
+evidence that attendance has been going somewhere else, not evidence that none
+was recorded.
 
-Prefer closing the console window (clean exit, registration released at once)
-over `Stop-Process -Force`.
+`scripts/migrate_sqlite_to_neon.py` reads `time_tracker.db` **in this
+directory**. Running it as-is would migrate the stale copy and silently discard
+every shift recorded on the other machine since 2026-08-20, including any pay
+owed. The three "stale open shifts" may also already be settled over there.
+
+**Next step: find the machine running `run_time_bot.bat` /
+`time_tracking_bot.py`, stop it, and copy its `time_tracker.db` here.** Only
+then does the cutover procedure below apply.
+
+### ⚠️ Never probe a running bot with getUpdates
+
+Calling `getUpdates` to "check whether the bot is polling" **is itself a
+competing poller** — it kicks the real bot off its long-poll, and this bot
+registers no error handler, so the conflict surfaces as an unhandled exception.
+`getWebhookInfo` is safe. `getUpdates` is not.
+
+An instantaneous probe is also a **bad detector**: a rival in backoff holds the
+slot only briefly every ~35 s, so 7 of 8 snapshot probes returned 200 and
+produced a confident, wrong "there is no second bot". **Use a held long-poll
+(`timeout=60`) with every local bot stopped** — it catches anything that polls
+during the whole window.
+
+⚠️ On 2026-08-22 roughly 40 minutes went into starting local bots and probing,
+all of it competing with the live remote instance. Clock-ins attempted in that
+window may have hit a bot that was mid-backoff. Do not repeat it: diagnose with
+one long-poll, with nothing local running.
 
 ## Open decisions for the owner
 
