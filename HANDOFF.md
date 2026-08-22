@@ -305,24 +305,24 @@ send it `/start` from Telegram; read its console window; check the process
 list. If you must use `getUpdates`, stop every local bot first - then a 409
 genuinely does mean something off-machine holds the token.
 
-🔴 **UNRESOLVED as of 2026-08-22 — do NOT cut over until this is settled.**
-A single `getUpdates` probe with every local bot stopped returned 200, which
-looked like proof that nothing off-machine polls this token. It is not proof:
-one sample can land in a competing bot's backoff gap. Against that, a local
-bot started at 11:07:10 kept getting `Conflict` for over three minutes,
-long past the lingering-socket window, with only one bot process and one
-startup line in its log — and the rebuilt Fly app cannot be the culprit
-because `build_application` sets `.updater(None)`, so it is structurally
-incapable of polling.
+**Settled 2026-08-22: there is no second bot.** Eight `getUpdates` samples
+over ~64 s with every local bot stopped never once returned 409 — a rival bot
+running PTB's retry loop would have been mid-request at least once. The Fly
+app also cannot be a culprit: `build_application` sets `.updater(None)`, so it
+is structurally incapable of polling, as are the local uvicorn processes.
 
-**If a bot IS running on another machine, that machine's SQLite file is the
-real source of truth and `time_tracker.db` here is incomplete** — migrating
-from this copy would silently lose every shift recorded there since. Session
-memory also notes "the Telegram bot runs on a different machine".
+**Revised figure: a force-killed poller's registration lingers up to ~3
+minutes, not 60–90 s.** A bot started at 11:07:10 conflicted until 11:08:24 —
+about three minutes after the instance killed at 11:05:30.
 
-Settle it by sampling `getUpdates` repeatedly over a minute with every local
-bot stopped, not once — or simply by checking whether any other PC or server
-is running `run_time_bot.bat`.
+⚠️ **The conflicts are self-healing. Do not "fix" them by restarting.** PTB
+backs off (6 s → 21 s → …) and recovers by itself once the old registration
+expires. Every restart resets that clock and starts a fresh ~3-minute conflict
+window, which is what turned a self-correcting hiccup into an hour of chasing
+a bot that did not exist. **Start it once, then wait three quiet minutes.**
+
+Prefer closing the console window (clean exit, registration released at once)
+over `Stop-Process -Force`.
 
 ## Open decisions for the owner
 
