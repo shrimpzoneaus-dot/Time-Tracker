@@ -305,9 +305,24 @@ send it `/start` from Telegram; read its console window; check the process
 list. If you must use `getUpdates`, stop every local bot first - then a 409
 genuinely does mean something off-machine holds the token.
 
-Checked on 2026-08-22 with every local instance stopped: `getUpdates` returned
-200, so **nothing off-machine polls this token**. There is no second bot on
-another machine.
+🔴 **UNRESOLVED as of 2026-08-22 — do NOT cut over until this is settled.**
+A single `getUpdates` probe with every local bot stopped returned 200, which
+looked like proof that nothing off-machine polls this token. It is not proof:
+one sample can land in a competing bot's backoff gap. Against that, a local
+bot started at 11:07:10 kept getting `Conflict` for over three minutes,
+long past the lingering-socket window, with only one bot process and one
+startup line in its log — and the rebuilt Fly app cannot be the culprit
+because `build_application` sets `.updater(None)`, so it is structurally
+incapable of polling.
+
+**If a bot IS running on another machine, that machine's SQLite file is the
+real source of truth and `time_tracker.db` here is incomplete** — migrating
+from this copy would silently lose every shift recorded there since. Session
+memory also notes "the Telegram bot runs on a different machine".
+
+Settle it by sampling `getUpdates` repeatedly over a minute with every local
+bot stopped, not once — or simply by checking whether any other PC or server
+is running `run_time_bot.bat`.
 
 ## Open decisions for the owner
 
