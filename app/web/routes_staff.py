@@ -18,6 +18,23 @@ from app.web.templating import templates
 
 router = APIRouter()
 
+# The bot writes from Telegram at any moment, so a cached clock face is a
+# clock face that lies about whether you are on shift.
+NO_STORE = {"Cache-Control": "no-store"}
+
+
+def clockface_context(session: OrmSession, user: User, now) -> dict:
+    """Everything _clockface.html needs, shared by the page and its poll."""
+    return {
+        "t": _translator(),
+        "state": current_state(session, user.user_id, as_of=now),
+        "summary": month_summary(session, user.user_id, now.strftime("%Y-%m")),
+        "format_time": clock.format_time,
+        "format_duration": clock.format_duration,
+        "format_hhmm": clock.format_hhmm,
+        "format_money": payroll.format_money,
+    }
+
 
 @router.get("/signin", response_class=HTMLResponse)
 def signin(request: Request):
@@ -56,26 +73,38 @@ def clock_screen(
         return RedirectResponse("/signin", status_code=303)
 
     now = clock.now()
-    state = current_state(session, user.user_id, as_of=now)
-    summary = month_summary(session, user.user_id, now.strftime("%Y-%m"))
-
     return templates.TemplateResponse(
         request,
         "clock.html",
         {
-            "t": _translator(),
+            **clockface_context(session, user, now),
             "user": user,
-            "state": state,
-            "summary": summary,
             "now": now,
             "is_admin": repo.is_admin(user),
-            "format_time": clock.format_time,
-            "format_duration": clock.format_duration,
-            "format_hhmm": clock.format_hhmm,
-            "format_money": payroll.format_money,
             "message": request.query_params.get("msg"),
             "error": request.query_params.get("error"),
         },
+        headers=NO_STORE,
+    )
+
+
+@router.get("/fragment/clock", response_class=HTMLResponse)
+def clock_fragment(
+    request: Request,
+    user: User = Depends(auth.require_user),
+    session: OrmSession = Depends(get_session),
+):
+    """The clock face and month figures alone, for the open page to poll.
+
+    require_user, not current_user: the page redirects a signed-out visitor to
+    /signin, but a poll must be told 401 and stop rather than be handed a
+    sign-in page to swap into the clock face.
+    """
+    return templates.TemplateResponse(
+        request,
+        "_clockface.html",
+        clockface_context(session, user, clock.now()),
+        headers=NO_STORE,
     )
 
 

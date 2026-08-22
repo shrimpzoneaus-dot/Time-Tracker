@@ -85,14 +85,53 @@ it needs no dirty-field guard — which is why it is the only thing swapped.
 not against `board.innerHTML`. The browser normalises markup it has parsed, so
 the innerHTML comparison never matches and every poll would rebuild the DOM.
 
-⚠️ **The staff clock page (`/`) still has the gap.** Its timer counts up
-locally forever: clock out on Telegram and the web page keeps counting. Not
-fixed here — it is a different shape of fix (the status, not just a table,
-has to change) and no test pins it yet.
+Verified: 7 new tests, each watched failing first, and a real render
+confirming the fragment body appears byte-identical inside the console.
 
-Verified: `69 passed, 1 skipped` under `.venv` (7 new, each watched failing
-first), the legacy suite still 7/7, and a real render confirming the fragment
-body appears byte-identical inside the console.
+## The staff clock page updates itself too (2026-08-22)
+
+Same bug, different shape, and the worst of the three: the clock face baked
+its status in at render and the script only ticked a local counter upward. An
+employee who clocked out on Telegram watched the web page keep counting the
+shift they had already ended — **still offering a Clock Out button**.
+
+The clock face and the month figures are now the shared partial
+`_clockface.html`, rendered on load and by **`GET /fragment/clock`**, polled
+every 10 s. The action buttons live inside the partial deliberately: a
+clock-out taken on Telegram has to take the Clock Out button away with it.
+
+⚠️ **`require_user`, not `current_user`.** The page redirects a signed-out
+visitor to `/signin`; the fragment returns **401** instead, so a poll whose
+session expired is told to stop rather than handed a sign-in page to swap into
+the clock face.
+
+⚠️ **The swap re-seeds the local ticker** (`startTimer()` after every swap).
+Without it the ticker holds the `#timer` element the swap just discarded, and
+the visible timer freezes. `data-worked` ticks every second, so the fragment
+differs on every poll and the page does swap every 10 s — that is deliberate,
+it keeps the local timer pinned to server truth.
+
+⚠️ **The ticker paints immediately on (re)start.** The server renders the
+timer as `HH:MM`; waiting for the first 1 s interval dropped the seconds off
+the display for a beat after every swap.
+
+⚠️ **The swap is skipped while a button inside the panel has focus**, so a
+tap in flight is never pulled out from under a finger. There are no text
+inputs in this panel, so it needs no dirty-field guard beyond that.
+
+⚠️ **The client-side JS is reviewed, not machine-verified** — this machine has
+no playwright or selenium, in either interpreter. The server contract (status,
+buttons, figures, 401, `no-store`, no drift) is covered by tests; the swap and
+re-seed logic is not. Worth a browser check before cutover.
+
+`/me/shifts` is deliberately left alone: it lists closed shifts for a month,
+so it has nothing live to go stale.
+
+Verified: `78 passed, 1 skipped` under `.venv` (9 more, each watched failing
+first), the legacy suite still 7/7, and a real render showing the fragment go
+from `clockface working` + Clock Out + `data-running="1"` to
+`clockface finished` + Clock In + `data-running="0"` after a Telegram
+clock-out.
 
 ## Git
 
@@ -109,7 +148,7 @@ a0d9115 fix(deps): declare python-multipart — the image could not boot without
 faa1c60 feat(core): tested shift/payroll domain, verifying SQLite->Neon migration
 ```
 
-69 passing + 1 skipped: `.\.venv\Scripts\python.exe -m pytest -q`
+78 passing + 1 skipped: `.\.venv\Scripts\python.exe -m pytest -q`
 (the skip is the legacy-dashboard module above; run it on the system Python)
 
 ## Secrets

@@ -1,0 +1,47 @@
+{# The employee's live state: status, timer, buttons, and this month's figures.
+   Rendered into the page on load and by /fragment/clock on every poll, so the
+   two cannot drift. The buttons live in here on purpose -- a clock-out taken on
+   Telegram has to take the Clock Out button away with it. #}
+<section class="clockface {{ state.status|lower }}">
+  <p class="state-label">
+    {% if state.is_working %}{{ t('on_shift') }}
+    {% elif state.is_on_break %}{{ t('on_break') }}
+    {% else %}{{ t('not_working') }}{% endif %}
+  </p>
+
+  <p class="timer" id="timer"
+     data-worked="{{ state.worked_seconds }}"
+     data-running="{{ '1' if state.is_working else '0' }}">
+    {{ format_hhmm(state.worked_seconds) }}
+  </p>
+
+  {% if state.started_at and not state.is_off %}
+    <p class="muted">
+      {{ t('started_at') }} {{ format_time(state.started_at) }}
+      {% if state.break_seconds %} · {{ t('break_total') }} {{ format_duration(state.break_seconds) }}{% endif %}
+    </p>
+  {% endif %}
+
+  <div class="actions">
+    {% for action in state.available_actions() %}
+      <form method="post" action="/clock/{{ action }}">
+        <button class="big {{ action }}">
+          {% if action == 'in' %}{{ t('clock_in') }}
+          {% elif action == 'out' %}{{ t('clock_out') }}
+          {% elif action == 'break' %}{{ t('start_break') }}
+          {% else %}{{ t('end_break') }}{% endif %}
+        </button>
+      </form>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>{{ t('this_month') }} <span id="live-status" class="live-status">Live</span></h2>
+  <dl class="figures">
+    <div><dt>{{ t('hours') }}</dt><dd>{{ format_duration(summary.work_seconds) }}</dd></div>
+    <div><dt>{{ t('gross') }}</dt><dd>{{ format_money(summary.gross_cents) }}</dd></div>
+    <div><dt>{{ t('advances') }}</dt><dd>{{ format_money(summary.advance_cents) }}</dd></div>
+    <div class="emphasis"><dt>{{ t('net') }}</dt><dd>{{ format_money(summary.net_cents) }}</dd></div>
+  </dl>
+</section>

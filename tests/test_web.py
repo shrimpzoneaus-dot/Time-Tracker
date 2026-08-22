@@ -380,20 +380,21 @@ def test_a_broken_bot_token_does_not_take_down_the_web_app(tmp_path, monkeypatch
 BOARD_FRAGMENT = "/admin/fragment/board"
 
 
-def clock_in_on_telegram(user_id: int, name: str) -> int:
+def clock_in_on_telegram(user_id: int, name: str, minutes_ago: int = 0) -> int:
     """A shift opened by the bot process, which the console never learns about."""
     from app.db import repo
     from app.db.models import Timesheet
     from app.db.session import session_scope
     from app.domain import clock, shifts
 
+    started = clock.now() - timedelta(minutes=minutes_ago)
     with session_scope() as session:
         repo.upsert_user(session, user_id, name)
         row = Timesheet(
             user_id=user_id,
-            date=clock.business_date(clock.now()),
+            date=clock.business_date(started),
             status=shifts.STATUS_WORKING,
-            in_time=clock.now(),
+            in_time=started,
             total_break_seconds=0,
         )
         session.add(row)
@@ -477,3 +478,124 @@ def test_employee_names_are_escaped_in_the_fragment(client):
     fragment = client.get(BOARD_FRAGMENT).text
     assert "<script>alert(1)</script>" not in fragment
     assert "&lt;script&gt;" in fragment
+
+
+# --- the staff clock page must not go stale --------------------------------
+#
+# The same bug as the console had, in a different shape. The clock face bakes
+# its status in at render and its script only ticks a local counter upward, so
+# an employee who clocks out on Telegram watches the web page keep counting the
+# shift they already ended -- and the buttons it offers are the wrong ones.
+
+CLOCK_FRAGMENT = "/fragment/clock"
+
+
+def start_break_on_telegram(shift_id: int) -> None:
+    from app.db.models import Timesheet
+    from app.db.session import session_scope
+    from app.domain import clock, shifts
+
+    with session_scope() as session:
+        row = session.get(Timesheet, shift_id)
+        row.status = shifts.STATUS_ON_BREAK
+        row.break_start = clock.now()
+
+
+def set_rate_for(user_id: int, cents: int) -> None:
+    from app.db import repo
+    from app.db.session import session_scope
+
+    with session_scope() as session:
+        repo.set_rate(session, user_id, cents, 999)
+
+
+def test_the_clock_page_can_update_itself(client):
+    sign_in(client, 111, "Employee One")
+    page = client.get("/").text
+    assert CLOCK_FRAGMENT in page
+    assert "setInterval" in page
+
+
+def test_the_clock_fragment_needs_a_signed_in_user(client):
+    """401, not the 303 to /signin that the page itself returns: a poll must be
+    told to stop, not handed a sign-in page to swap into the clock face."""
+    assert client.get(CLOCK_FRAGMENT, follow_redirects=False).status_code == 401
+
+
+def test_the_clock_fragment_shows_only_your_own_state(client):
+    sign_in(client, 111, "Employee One")
+    clock_in_on_telegram(222, "Somebody Else")
+
+    fragment = client.get(CLOCK_FRAGMENT).text
+    assert "not clocked in" in fragment
+    assert "Somebody Else" not in fragment
+
+
+def test_the_poll_sees_a_clock_out_made_on_telegram(client):
+    """The bug in one test: the page kept counting a shift that had ended."""
+    sign_in(client, 111, "Employee One")
+    shift_id = clock_in_on_telegram(111, "Employee One", minutes_ago=120)
+
+    on_shift = client.get(CLOCK_FRAGMENT).text
+    assert "on shift" in on_shift
+    assert "Clock Out" in on_shift
+
+    clock_out_on_telegram(shift_id)
+
+    after = client.get(CLOCK_FRAGMENT).text
+    assert "not clocked in" in after
+    assert "Clock In" in after
+    assert "Clock Out" not in after
+
+
+def test_the_poll_sees_a_break_started_on_telegram(client):
+    sign_in(client, 111, "Employee One")
+    shift_id = clock_in_on_telegram(111, "Employee One", minutes_ago=60)
+    start_break_on_telegram(shift_id)
+
+    fragment = client.get(CLOCK_FRAGMENT).text
+    assert "on break" in fragment
+    assert "End Break" in fragment
+
+
+def test_the_month_figures_follow_a_clock_out(client):
+    """Pay only lands in the month total once the shift is closed, so the
+    figures are exactly as stale as the clock face was."""
+    sign_in(client, 111, "Employee One")
+    set_rate_for(111, 2000)  # $20.00/h
+    shift_id = clock_in_on_telegram(111, "Employee One", minutes_ago=120)
+
+    assert "$0.00" in client.get(CLOCK_FRAGMENT).text
+
+    clock_out_on_telegram(shift_id)
+
+    after = client.get(CLOCK_FRAGMENT).text
+    assert "2h" in after
+    assert "$40.00" in after
+
+
+def test_the_clock_page_and_its_fragment_are_not_cacheable(client):
+    sign_in(client, 111, "Employee One")
+    for path in ("/", CLOCK_FRAGMENT):
+        response = client.get(path)
+        assert "no-store" in (response.headers.get("cache-control") or ""), path
+
+
+def test_the_clock_fragment_and_the_page_cannot_drift(client):
+    sign_in(client, 111, "Employee One")
+    clock_in_on_telegram(111, "Employee One", minutes_ago=30)
+
+    fragment = client.get(CLOCK_FRAGMENT).text
+    assert fragment.strip() in client.get("/").text
+
+
+def test_the_swapped_clock_face_carries_the_server_figure(client):
+    """The local ticker counts up from data-worked. After a swap it must be
+    re-seeded from the new one, or it carries on from the number it had."""
+    sign_in(client, 111, "Employee One")
+    clock_in_on_telegram(111, "Employee One", minutes_ago=30)
+
+    fragment = client.get(CLOCK_FRAGMENT).text
+    assert 'data-worked="' in fragment
+    assert 'data-running="1"' in fragment
+    assert "startTimer" in client.get("/").text
