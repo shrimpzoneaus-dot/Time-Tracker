@@ -35,7 +35,7 @@ run_time_bot.bat
 Admin mac dinh hien tai:
 
 ```text
-6393446109
+<your_admin_telegram_id>
 ```
 
 Lenh admin trong Telegram:
@@ -57,9 +57,9 @@ Lenh admin trong Telegram:
 Vi du tinh luong:
 
 ```text
-/set_rate 6393446109 16
+/set_rate <your_admin_telegram_id> 16
 /ung 100$
-/salary 2026-06 6393446109
+/salary 2026-06 <your_admin_telegram_id>
 ```
 
 Bot tinh:
@@ -83,9 +83,20 @@ Mo trinh duyet:
 http://127.0.0.1:5000
 ```
 
+Dashboard tu cap nhat: khi nhan vien bam IN/BREAK/OUT tren Telegram, bang cong va bang luong
+tren web tu doi sau vai giay, khong can bam Refresh hay F5. Neu dang go do mot o gio thi
+dashboard cho go xong roi moi cap nhat, khong ghi de len cai dang nhap.
+
+Kiem tra (dung system Python, khong phai .venv):
+
+```powershell
+python tests\test_dashboard_live_updates.py
+```
+
 Dashboard co:
 
 ```text
+- Tu cap nhat tu Telegram (khong can refresh)
 - Xem bang cong theo ngay
 - Sua gio in/out/break/status truc tiep
 - Xem bang luong theo thang

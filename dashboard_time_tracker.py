@@ -8,12 +8,13 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from xml.sax.saxutils import escape
 from dotenv import load_dotenv
-from flask import Flask, Response, redirect, render_template_string, request, url_for
+from flask import Flask, Response, jsonify, redirect, render_template_string, request, url_for
 
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "time_tracker.db"
 DEFAULT_TIMEZONE = "Australia/Sydney"
+LIVE_POLL_SECONDS = 10
 
 STATUS_WORKING = "WORKING"
 STATUS_ON_BREAK = "ON_BREAK"
@@ -323,6 +324,54 @@ def build_salary_rows(month: str, user_id: int | None = None):
     return sorted(grouped.values(), key=lambda item: item["user"].get("full_name", ""))
 
 
+DAY_ROWS_TEMPLATE = """
+          {% for row in day_rows %}
+            <tr>
+              <td>{{ row.full_name }}<br><span class="muted">{{ row.user_id }}</span></td>
+              <td><span class="status {{ row.status }}">{{ row.status }}</span></td>
+              <td>{{ format_time(row.in_time) }}</td>
+              <td>{{ format_time(row.out_time) }}</td>
+              <td>{{ (row.total_break_seconds or 0) // 60 }}m</td>
+              <td>{{ format_work_duration(calculate_work_seconds(row)) }}</td>
+              <td>
+                <form class="inline-edit" method="post" action="/update-timesheet">
+                  <input type="hidden" name="timesheet_id" value="{{ row.id }}">
+                  <input type="hidden" name="return_date" value="{{ selected_date }}">
+                  <input name="in_time" value="{{ format_time(row.in_time) if row.in_time else '' }}" placeholder="In">
+                  <input name="out_time" value="{{ format_time(row.out_time) if row.out_time else '' }}" placeholder="Out">
+                  <input name="break_minutes" value="{{ (row.total_break_seconds or 0) // 60 }}" placeholder="Break">
+                  <select name="status">
+                    <option value="WORKING" {% if row.status == 'WORKING' %}selected{% endif %}>WORKING</option>
+                    <option value="ON_BREAK" {% if row.status == 'ON_BREAK' %}selected{% endif %}>ON_BREAK</option>
+                    <option value="FINISHED" {% if row.status == 'FINISHED' %}selected{% endif %}>FINISHED</option>
+                  </select>
+                  <button type="submit">Save</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7" class="muted">No timesheets for this date.</td></tr>
+          {% endfor %}
+"""
+
+
+SALARY_ROWS_TEMPLATE = """
+            {% for item in salary_rows %}
+              <tr>
+                <td>{{ item.user.full_name }}<br><span class="muted">{{ item.user.user_id }}</span></td>
+                <td>{{ format_money(item.user.hourly_rate_cents or 0) }}/h</td>
+                <td>{{ item.shifts }}</td>
+                <td>{{ format_work_duration(item.work_seconds) }}</td>
+                <td class="money">{{ format_money(item.gross_cents) }}</td>
+                <td>{{ format_money(item.advance_cents) }}</td>
+                <td class="money {% if item.net_cents < 0 %}negative{% endif %}">{{ format_money(item.net_cents) }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="7" class="muted">No salary data for this month.</td></tr>
+            {% endfor %}
+"""
+
+
 TEMPLATE = """
 <!doctype html>
 <html lang="en">
@@ -467,6 +516,13 @@ TEMPLATE = """
       .toolbar, .grid { grid-template-columns: 1fr; }
       table { display: block; overflow-x: auto; }
     }
+    .live-status {
+      align-self: center;
+      font-size: 12px;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+    .live-status.error { color: #b45309; }
   </style>
 </head>
 <body>
@@ -497,6 +553,7 @@ TEMPLATE = """
         </select>
       </label>
       <button type="submit">Refresh</button>
+      <span id="live-status" class="live-status">Live</span>
       <a class="button" href="{{ url_for('export_day_csv', date=selected_date) }}">Export Day CSV</a>
       <a class="button" href="{{ url_for('export_day_xlsx', date=selected_date) }}">Export Day Excel</a>
       <a class="button" href="{{ url_for('export_salary_csv', month=selected_month, user_id=selected_user_id) }}">Export Salary CSV</a>
@@ -517,34 +574,8 @@ TEMPLATE = """
             <th>Edit</th>
           </tr>
         </thead>
-        <tbody>
-          {% for row in day_rows %}
-            <tr>
-              <td>{{ row.full_name }}<br><span class="muted">{{ row.user_id }}</span></td>
-              <td><span class="status {{ row.status }}">{{ row.status }}</span></td>
-              <td>{{ format_time(row.in_time) }}</td>
-              <td>{{ format_time(row.out_time) }}</td>
-              <td>{{ (row.total_break_seconds or 0) // 60 }}m</td>
-              <td>{{ format_work_duration(calculate_work_seconds(row)) }}</td>
-              <td>
-                <form class="inline-edit" method="post" action="/update-timesheet">
-                  <input type="hidden" name="timesheet_id" value="{{ row.id }}">
-                  <input type="hidden" name="return_date" value="{{ selected_date }}">
-                  <input name="in_time" value="{{ format_time(row.in_time) if row.in_time else '' }}" placeholder="In">
-                  <input name="out_time" value="{{ format_time(row.out_time) if row.out_time else '' }}" placeholder="Out">
-                  <input name="break_minutes" value="{{ (row.total_break_seconds or 0) // 60 }}" placeholder="Break">
-                  <select name="status">
-                    <option value="WORKING" {% if row.status == 'WORKING' %}selected{% endif %}>WORKING</option>
-                    <option value="ON_BREAK" {% if row.status == 'ON_BREAK' %}selected{% endif %}>ON_BREAK</option>
-                    <option value="FINISHED" {% if row.status == 'FINISHED' %}selected{% endif %}>FINISHED</option>
-                  </select>
-                  <button type="submit">Save</button>
-                </form>
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="7" class="muted">No timesheets for this date.</td></tr>
-          {% endfor %}
+        <tbody id="day-rows">
+          {{ day_rows_html|safe }}
         </tbody>
       </table>
     </section>
@@ -564,20 +595,8 @@ TEMPLATE = """
               <th>Net</th>
             </tr>
           </thead>
-          <tbody>
-            {% for item in salary_rows %}
-              <tr>
-                <td>{{ item.user.full_name }}<br><span class="muted">{{ item.user.user_id }}</span></td>
-                <td>{{ format_money(item.user.hourly_rate_cents or 0) }}/h</td>
-                <td>{{ item.shifts }}</td>
-                <td>{{ format_work_duration(item.work_seconds) }}</td>
-                <td class="money">{{ format_money(item.gross_cents) }}</td>
-                <td>{{ format_money(item.advance_cents) }}</td>
-                <td class="money {% if item.net_cents < 0 %}negative{% endif %}">{{ format_money(item.net_cents) }}</td>
-              </tr>
-            {% else %}
-              <tr><td colspan="7" class="muted">No salary data for this month.</td></tr>
-            {% endfor %}
+          <tbody id="salary-rows">
+            {{ salary_rows_html|safe }}
           </tbody>
         </table>
       </section>
@@ -640,17 +659,111 @@ TEMPLATE = """
       </div>
     </div>
   </main>
+  <script>
+    (function () {
+      var POLL_MS = {{ live_poll_seconds }} * 1000;
+      var statusEl = document.getElementById("live-status");
+
+      // Never overwrite a table the admin is part-way through editing.
+      function isDirty(el) {
+        if (!el) return true;
+        if (el.contains(document.activeElement)) return true;
+        var fields = el.querySelectorAll("input, select");
+        for (var i = 0; i < fields.length; i++) {
+          var field = fields[i];
+          if (field.tagName === "SELECT") {
+            for (var j = 0; j < field.options.length; j++) {
+              if (field.options[j].selected !== field.options[j].defaultSelected) return true;
+            }
+          } else if (field.value !== field.defaultValue) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function swap(el, html) {
+        if (!el || typeof html !== "string") return;
+        if (el.innerHTML === html) return;
+        if (isDirty(el)) return;
+        el.innerHTML = html;
+      }
+
+      function setStatus(text, isError) {
+        if (!statusEl) return;
+        statusEl.textContent = text;
+        statusEl.className = isError ? "live-status error" : "live-status";
+      }
+
+      function poll() {
+        fetch("/fragment/tables" + window.location.search, { cache: "no-store" })
+          .then(function (res) {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.json();
+          })
+          .then(function (data) {
+            swap(document.getElementById("day-rows"), data.day);
+            swap(document.getElementById("salary-rows"), data.salary);
+            setStatus("Live - updated " + new Date().toTimeString().slice(0, 8), false);
+          })
+          .catch(function () {
+            setStatus("Live updates paused - retrying", true);
+          });
+      }
+
+      document.addEventListener("visibilitychange", function () {
+        if (!document.hidden) poll();
+      });
+
+      poll();
+      window.setInterval(poll, POLL_MS);
+    })();
+  </script>
 </body>
 </html>
 """
 
 
-@app.route("/")
-def index():
+def selected_filters() -> tuple[str, str, str, int | None]:
     selected_date = request.args.get("date") or today_local().isoformat()
     selected_month = request.args.get("month") or today_local().strftime("%Y-%m")
     selected_user_id = request.args.get("user_id") or ""
     user_id = int(selected_user_id) if selected_user_id.isdigit() else None
+    return selected_date, selected_month, selected_user_id, user_id
+
+
+def render_day_rows(day_rows, selected_date: str) -> str:
+    return render_template_string(
+        DAY_ROWS_TEMPLATE,
+        day_rows=day_rows,
+        selected_date=selected_date,
+        format_time=format_time,
+        format_work_duration=format_work_duration,
+        calculate_work_seconds=calculate_work_seconds,
+    )
+
+
+def render_salary_rows(salary_rows) -> str:
+    return render_template_string(
+        SALARY_ROWS_TEMPLATE,
+        salary_rows=salary_rows,
+        format_money=format_money,
+        format_work_duration=format_work_duration,
+    )
+
+
+@app.after_request
+def disable_caching(response: Response) -> Response:
+    """The bot writes continuously; a cached page is always a wrong page."""
+    if response.mimetype in {"text/html", "application/json"}:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.route("/")
+def index():
+    selected_date, selected_month, selected_user_id, user_id = selected_filters()
 
     users = load_users()
     day_rows = load_timesheets_for_date(selected_date)
@@ -663,12 +776,25 @@ def index():
         selected_month=selected_month,
         selected_user_id=selected_user_id,
         users=users,
-        day_rows=day_rows,
-        salary_rows=salary_rows,
+        day_rows_html=render_day_rows(day_rows, selected_date),
+        salary_rows_html=render_salary_rows(salary_rows),
+        live_poll_seconds=LIVE_POLL_SECONDS,
         format_time=format_time,
         format_money=format_money,
         format_work_duration=format_work_duration,
         calculate_work_seconds=calculate_work_seconds,
+    )
+
+
+@app.get("/fragment/tables")
+def fragment_tables():
+    """Freshly rendered table bodies, polled by the open dashboard."""
+    selected_date, selected_month, _selected_user_id, user_id = selected_filters()
+    return jsonify(
+        {
+            "day": render_day_rows(load_timesheets_for_date(selected_date), selected_date),
+            "salary": render_salary_rows(build_salary_rows(selected_month, user_id)),
+        }
     )
 
 

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ t('today') }} — Time Tracker{% endblock %}
+
+{% block body %}
+<header class="topbar">
+  <div>
+    <div class="who">{{ user.full_name }}</div>
+    <div class="muted">{{ now.strftime('%a %d %b') }}</div>
+  </div>
+  <nav class="topnav">
+    <a href="/me/shifts">{{ t('my_shifts') }}</a>
+    {% if is_admin %}<a href="/admin">Admin</a>{% endif %}
+    <form method="post" action="/signout"><button class="link">{{ t('sign_out') }}</button></form>
+  </nav>
+</header>
+
+{% if message %}<p class="flash ok">{{ message }}</p>{% endif %}
+{% if error %}<p class="flash bad">{{ error }}</p>{% endif %}
+
+<div id="live">
+{% include "_clockface.html" %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Two jobs. The ticker advances the server's figure locally between polls so
+  // the timer does not sit frozen for ten seconds at a time. The poll re-asks
+  // the database, because the status, the buttons and the month figures are
+  // all baked in at render: clock out on Telegram and this page used to keep
+  // counting a shift that had already ended, still offering Clock Out.
+  (function () {
+    var POLL_MS = 10000;
+    var live = document.getElementById('live');
+    var lastHtml = null;
+    var ticker = null;
+
+    function startTimer() {
+      if (ticker) { window.clearInterval(ticker); ticker = null; }
+      var el = document.getElementById('timer');
+      if (!el || el.dataset.running !== '1') return;
+      var worked = parseInt(el.dataset.worked, 10);
+      var started = Date.now();
+      function paint() {
+        var total = worked + Math.floor((Date.now() - started) / 1000);
+        var h = String(Math.floor(total / 3600)).padStart(2, '0');
+        var m = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+        var s = String(total % 60).padStart(2, '0');
+        el.textContent = h + ':' + m + ':' + s;
+      }
+      // Painted at once, not after the first interval: the server renders the
+      // timer as HH:MM, so waiting a second would drop the seconds off the
+      // display for a beat after every ten-second swap.
+      paint();
+      ticker = window.setInterval(paint, 1000);
+    }
+
+    function setStatus(text, isError) {
+      var el = document.getElementById('live-status');  // replaced on each swap
+      if (!el) return;
+      el.textContent = text;
+      el.className = isError ? 'live-status error' : 'live-status';
+    }
+
+    function isBusy() {
+      // Never swap a button out from under a finger mid-tap.
+      var active = document.activeElement;
+      return !!(active && live.contains(active) && active.tagName === 'BUTTON');
+    }
+
+    function poll() {
+      fetch('/fragment/clock', { cache: 'no-store', credentials: 'same-origin' })
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.text();
+        })
+        .then(function (html) {
+          // Compared against the previous response, not against innerHTML: the
+          // browser normalises markup it has parsed, so that never matches.
+          if (html !== lastHtml && !isBusy()) {
+            live.innerHTML = html;
+            lastHtml = html;
+            startTimer();  // the swap replaced #timer; re-seed from the new figure
+          }
+          setStatus('Live', false);
+        })
+        .catch(function () {
+          setStatus('Paused', true);
+        });
+    }
+
+    startTimer();
+    if (!live) return;
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) poll();
+    });
+    window.setInterval(poll, POLL_MS);
+  })();
+</script>
+{% endblock %}

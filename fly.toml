@@ -1,0 +1,49 @@
+# Time Tracker — Fly.io. Owner-run:
+#   fly apps create shrimpzone-timetracker && fly deploy -a shrimpzone-timetracker
+#
+# This app has its OWN Neon database. Do not point it at the concierge or
+# auction database: a shared DB lets either app's deploy drop the other's
+# tables, which is why shrimpzone-concierge/fly.toml says the same thing.
+
+app = "shrimpzone-timetracker"
+primary_region = "syd"
+
+[build]
+
+[deploy]
+  # Versioned migrations only. NEVER replace this with anything that generates
+  # and applies DDL at deploy time — that is how shrimpzone-concierge came
+  # within one schema change of losing production data with no rollback.
+  #
+  # ONE-TIME, if the Neon database was created before this file existed and
+  # already carries the legacy tables, stamp instead of migrating:
+  #   DATABASE_URL=<prod> alembic stamp 0001_baseline
+  # Without that, this release command fails with "table already exists".
+  # That failure is the SAFE outcome; do not fix it by dropping anything.
+  release_command = "alembic upgrade head"
+
+[env]
+  PORT = "8080"
+  APP_TIMEZONE = "Australia/Sydney"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Staff tap Clock In and expect it to register. A 2–6 s cold start reads as
+  # broken and gets tapped twice, so machines stay warm.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

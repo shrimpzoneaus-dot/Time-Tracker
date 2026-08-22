@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+*.db-*
+.env
+.git/
+tests/
+docs/
+design-mockups/
+*.log

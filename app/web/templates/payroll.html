@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Payroll {{ month }}{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div><div class="who">Payroll</div><div class="muted">{{ month }}</div></div>
+  <nav class="topnav">
+    <a href="/admin">Console</a>
+    <a href="/admin/payroll.csv?month={{ month }}">CSV</a>
+  </nav>
+</header>
+
+<form class="toolbar" method="get" action="/admin/payroll">
+  <input type="month" name="month" value="{{ month }}">
+  <button>Show</button>
+</form>
+
+<section class="card">
+  <table>
+    <thead><tr><th>Employee</th><th>Shifts</th><th>Hours</th><th>Gross</th><th>Advances</th><th>Net</th></tr></thead>
+    <tbody>
+      {% for row in summaries %}
+        <tr>
+          <td>{{ row.full_name }}<br><span class="muted">{{ row.user_id }}</span></td>
+          <td>{{ row.shift_count }}</td>
+          <td>{{ format_duration(row.work_seconds) }}</td>
+          <td class="money">{{ format_money(row.gross_cents) }}</td>
+          <td class="money">{{ format_money(row.advance_cents) }}</td>
+          <td class="money {% if row.net_cents < 0 %}bad{% endif %}">{{ format_money(row.net_cents) }}</td>
+        </tr>
+        {% if row.problem_shifts %}
+          <tr><td colspan="6" class="muted warn">
+            {% for id, why in row.problem_shifts %}shift {{ id }}: {{ why }}{% if not loop.last %} · {% endif %}{% endfor %}
+          </td></tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
