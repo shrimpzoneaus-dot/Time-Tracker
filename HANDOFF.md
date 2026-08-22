@@ -17,39 +17,49 @@ into `time_tracker_MERGED.db` via `scripts/merge_vps_snapshot.py`.
 point the migration at the merged file — `migrate_sqlite_to_neon.py` defaults
 to `time_tracker.db`, which is now the OLD copy. See the FOUND section.
 
-## 🟡 CUTOVER IS HALF DONE — one command left (2026-08-22)
+## ✅ CUTOVER COMPLETE (2026-08-22)
 
-Done, in order, all verified:
+The rebuilt app is now the live system. Done in order, each verified:
 
-1. VPS bot **stopped and disabled** (`systemctl stop/disable time-tracker-bot`).
-2. Final snapshot taken from the VPS and merged: **107 shifts** in
-   `time_tracker_MERGED.db` (5 brought over, 3 local corrections kept, #19 still
-   deleted).
-3. Migration **run for real** into Neon — verification passed: row counts,
-   primary keys, timestamps and every employee-month total reconcile.
-   Neon now holds 4 users, 4 rates, **107 timesheets**, 6 advances.
-4. First real Neon backup taken and **verified**:
+1. VPS bot **stopped and disabled** — `time-tracker-bot.service` on
+   `67.219.100.235` is `inactive / disabled`.
+2. Final snapshot merged: **107 shifts** (5 brought over from the VPS, the 3
+   local hand-corrections kept, #19 still deleted).
+3. Migration **run for real** — verification passed on row counts, primary
+   keys, timestamps and every employee-month total.
+4. First Neon backup taken and verified:
    `backups/time_tracker_20260822T082613Z.db`.
+5. **Webhook registered** — `setWebhook: OK`, 0 pending, no errors.
+6. Legacy **dashboard also stopped and disabled** on the VPS. It was still
+   serving the frozen SQLite file, and a stale payroll screen someone might pay
+   from is worse than no screen.
 
-**REMAINING — and until it runs, NOBODY can clock in:** the webhook is not
-registered, and the legacy bot is stopped, so Telegram updates go nowhere.
+Verified after cutover: `/healthz` 200, `/signin` 200, and Neon holds 4 users,
+4 rate rows, **107 timesheets**, 6 advances.
 
-    .\.venv\Scripts\python.exe scripts\set_webhook.py --set
+### Rollback, if it is ever needed
 
-(An automated agent was blocked from running this by a safety classifier — it
-registers a webhook using a secret. Run it yourself.)
+    .\.venv\Scripts\python.exe scripts\set_webhook.py --delete
+    ssh root@67.219.100.235 'systemctl enable --now time-tracker-bot time-tracker-dashboard'
 
-**If you are not ready to finish now, restore the old system instead:**
+`/root/time_tracker/time_tracker.db` on the VPS is untouched (40,960 bytes,
+frozen at the cutover moment), so the old system comes back exactly as it was.
+Anything recorded in the new system after cutover would NOT be in it.
 
-    ssh root@67.219.100.235 'systemctl enable --now time-tracker-bot'
+### Still open
 
-That brings the legacy bot back and staff carry on as before. Neon then goes
-stale and the migration must be redone — `scripts/reset_target_db.py --yes`
-clears Neon first, because the migration refuses a target that already holds
-timesheets.
-
-**After the webhook is set:** tell staff to send `/start` and tap
-**Open my timesheet**.
+* **Tell staff** — send `/start` to @Shirmzone_bot, tap **Open my timesheet**.
+  Nobody has been told yet.
+* **Three stale shifts** — #47 (`8865482786`, open since 2026-07-05), #86
+  (`6393446109`, ON_BREAK since 2026-08-06), #16 (pays $0). They migrated
+  across as-is and are editable in the new `/admin`. Real clock-out times still
+  needed; they decide pay and must not be invented.
+* **Moving this folder out of `Downloads`** — deferred deliberately.
+  `.venv` has absolute paths baked into its scripts, so a move breaks it until
+  the venv is recreated, and the Task Scheduler backup action points at the
+  current path. Not a thing to do the same day as a cutover.
+* Client-side JS is still reviewed, not machine-verified — no browser tooling
+  on this machine.
 
 ## What is live and verified
 
