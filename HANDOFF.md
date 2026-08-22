@@ -279,20 +279,35 @@ Backups land in `backups/`, which is gitignored. They are real pay data -
 never commit one. Retention is unbounded; the files are small (tens of KB), so
 this is fine for years, but nothing prunes them.
 
-## ⚠️ Never probe the bot with getUpdates (learned 2026-08-22)
+## ⚠️ Two ways to fake a "second bot instance" (learned 2026-08-22)
 
+`Conflict: terminated by other getUpdates request` does NOT reliably mean a
+second bot is running somewhere. It has two much more likely causes, and an
+hour went into chasing the wrong one.
+
+**1. Probing with `getUpdates` terminates the running bot's long-poll.**
 Calling `https://api.telegram.org/bot<TOKEN>/getUpdates` to "check whether the
-bot is polling" **terminates the running bot's long-poll** with
-`Conflict: terminated by other getUpdates request`. The probe does not observe
-the state, it destroys it - and this bot registers no error handler, so the
-conflict surfaces as an unhandled exception in its log.
+bot is polling" IS a competing getUpdates. The probe does not observe the
+state, it destroys it - and this bot registers no error handler, so it
+surfaces as an unhandled exception. `getWebhookInfo` is safe; `getUpdates` is
+not.
 
-An hour was lost to this: the conflicts looked like evidence of a second bot
-instance running on another machine. There was none. The probe was the second
-instance.
+**2. Force-killing the bot leaves Telegram holding the connection.**
+`Stop-Process -Force` kills the process without closing its socket, and
+Telegram keeps that getUpdates registered for roughly 60-90 seconds. Restart
+inside that window and the new instance conflicts with the corpse of the old
+one, once every ~35 s, looking exactly like a rival instance. **Wait ~90 s
+between stopping and restarting the bot**, or close its console window
+(a clean exit) instead of killing it.
 
-To check whether the bot is alive, read its log or send it `/start` from
-Telegram. `getWebhookInfo` is safe; `getUpdates` is not.
+How to actually check whether the bot is alive, in order of preference:
+send it `/start` from Telegram; read its console window; check the process
+list. If you must use `getUpdates`, stop every local bot first - then a 409
+genuinely does mean something off-machine holds the token.
+
+Checked on 2026-08-22 with every local instance stopped: `getUpdates` returned
+200, so **nothing off-machine polls this token**. There is no second bot on
+another machine.
 
 ## Open decisions for the owner
 
