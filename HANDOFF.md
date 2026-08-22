@@ -243,11 +243,63 @@ Order matters — Telegram will not allow polling and a webhook at the same time
 You are exactly back where you are today — nothing in this project ever writes
 to `time_tracker.db`.
 
+## Backups (2026-08-22)
+
+`scripts/backup_neon.py` takes a logical backup of the five payroll tables
+(`users`, `rate_history`, `timesheets`, `advances`, `edit_log`) into a
+timestamped SQLite file plus a JSON manifest, then **verifies it** - row counts
+AND every employee-month pay figure, recomputed through the same payroll code
+the admin console uses. A run that cannot verify exits non-zero and says so.
+
+    .\.venv\Scripts\python.exe scriptsackup_neon.py                  # take + verify
+    .\.venv\Scripts\python.exe scriptsackup_neon.py --verify <file>  # re-check an old one
+    .\.venv\Scripts\python.exe scriptsackup_neon.py --restore <file> # load it back
+
+**Scheduled**: Windows Task Scheduler task **"Time Tracker - daily Neon
+backup"**, daily at 13:00, `StartWhenAvailable` so a missed run catches up when
+the machine wakes. It runs `run_backup.bat`, which appends to
+`backupsackup.log` and passes the exit code through - so Task Scheduler's
+**Last Run Result** column is the honest signal: `0x0` means taken AND
+verified. Remove it with
+`Unregister-ScheduledTask -TaskName "Time Tracker - daily Neon backup"`.
+
+⚠️ It only runs while this machine is on. That is the accepted trade-off of
+the free option; a Fly scheduled machine was the alternative and was not taken.
+
+⚠️ **Sessions are deliberately not backed up.** They are ephemeral login
+tokens reissued through Telegram, and a file of live session tokens is a
+liability. The manifest masks the password for the same reason.
+
+⚠️ `connectable_url()` mirrors `app/config.py`: Neon hands out a bare
+`postgresql://` URL, which SQLAlchemy reads as **psycopg2** - absent and
+unwanted here. Any new entry point that opens `DATABASE_URL` must do the same
+rewrite or it will work in tests and fail against the real database.
+
+Backups land in `backups/`, which is gitignored. They are real pay data -
+never commit one. Retention is unbounded; the files are small (tens of KB), so
+this is fine for years, but nothing prunes them.
+
+## ⚠️ Never probe the bot with getUpdates (learned 2026-08-22)
+
+Calling `https://api.telegram.org/bot<TOKEN>/getUpdates` to "check whether the
+bot is polling" **terminates the running bot's long-poll** with
+`Conflict: terminated by other getUpdates request`. The probe does not observe
+the state, it destroys it - and this bot registers no error handler, so the
+conflict surfaces as an unhandled exception in its log.
+
+An hour was lost to this: the conflicts looked like evidence of a second bot
+instance running on another machine. There was none. The probe was the second
+instance.
+
+To check whether the bot is alive, read its log or send it `/start` from
+Telegram. `getWebhookInfo` is safe; `getUpdates` is not.
+
 ## Open decisions for the owner
 
-1. **Neon Free plan gives 6 hours of history retention.** Thin once Neon is the
-   only copy of the payroll data. Either upgrade the plan or add a scheduled
-   `pg_dump`. Should be settled BEFORE cutover, not after.
+1. ~~**Neon Free plan gives 6 hours of history retention.**~~ **SETTLED
+   2026-08-22** - see "Backups" below. Not a `pg_dump`: this machine has no
+   PostgreSQL install at all. Upgrading the Neon plan is still open as a
+   separate question about point-in-time recovery; the data-loss gap is closed.
 2. **The UI has no visual identity yet.** What ships now is a deliberately
    restrained functional stylesheet. Three design directions are still owed for
    an owner pick (via the huashu-design process) — not started.
