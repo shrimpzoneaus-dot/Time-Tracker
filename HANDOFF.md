@@ -317,29 +317,42 @@ directory**. Running it as-is would migrate the stale copy and silently discard
 every shift recorded on the other machine since 2026-08-20, including any pay
 owed. The three "stale open shifts" may also already be settled over there.
 
-### 🔴 It is a SPLIT BRAIN, not a stale copy — do not overwrite either file
+### The database lineage — NOT a three-month split brain
 
-`time_tracker_transfer_package.zip` in `Downloads` is the bundle that created
-this copy. Its internal timestamps date the split exactly: the package was
-built on the ORIGINAL machine on **2026-06-09 17:20**, including a
-`time_tracker.db` of 28,672 bytes, and was unpacked here on **2026-06-10
-12:50**.
+An earlier version of this section claimed the two copies had diverged since
+June. The file forensics say otherwise, and the gap is small:
 
-Since then **this** machine's database recorded **91 timesheets dated
-2026-06-10 or later** (102 total, 2026-06-01 → 2026-08-20). The other machine
-is polling Telegram *now*, so it is writing to its own file as well.
+| File | Content | What it is |
+|---|---|---|
+| `time_tracker_local_old_20260820_135726.db` | 19 shifts, 3 users, 06-01 → **06-11** (mtime 11 Jun) | THIS machine's own database. It stopped recording on 11 June. |
+| `time_tracker.db` | 102 shifts, 4 users, 06-01 → **08-20** | The OTHER machine's database, copied here **2026-08-20 13:57**, when the local one was renamed aside. |
 
-**Neither database is complete.** Copying the remote file over the local one
-would destroy those 91 rows; leaving the local one in place loses whatever the
-remote has recorded. **Do not overwrite either.** Copy the remote file here as
-`time_tracker_REMOTE.db` and reconcile the two before any migration — compare
-per-employee-month totals, not just row counts, because an overlapping shift
-id means different things in each file.
+So the local file already contains the other machine's history through
+2026-08-20. Comparing the two, only **two** shifts exist solely in the old
+local copy, and both are accounted for: shift 19 (the 16.5 h overnight row
+deleted on owner instruction 2026-08-20) and a dangling never-closed shift for
+`6393446109` at 2026-06-11 19:08. Nothing was lost in the swap.
 
-**Next step: find the machine running `run_time_bot.bat` /
-`time_tracking_bot.py`, close its window (clean exit), and bring its
-`time_tracker.db` here under a different name.** Only then does the cutover
-procedure below apply.
+**The real gap is therefore only 2026-08-20 → now** — whatever the other
+machine has recorded since the copy was taken. Retrieve that file, confirm it
+is a superset of this one, then use it. Keep `time_tracker.db` as it stands as
+the fallback until that check passes; do not delete it.
+
+### Who to ask
+
+`ADMIN_CHAT_ID=6393446109,298764295` — two admins:
+
+| Telegram id | Name | Role | Shifts here |
+|---|---|---|---|
+| `6393446109` | V Kai | ADMIN, $18.00/h | **65** (2026-06-01 → 08-20) |
+| `298764295` | Thanh Nguyen | ADMIN, $0.00/h | 2, both on 2026-06-10 (setup tests) |
+| `8865482786` | Tyler Dao | EMPLOYEE, $18.00/h | 30 |
+| `7725821590` | Kayn Tran | EMPLOYEE, $16.00/h | 5 |
+
+This machine belongs to Thanh (`THANH` / `tthan`), who has 2 test shifts. The
+heavy user and the other admin is **V Kai** — the most likely owner of the
+machine still polling. The transfer package that seeded this folder arrived by
+Discord on 2026-06-10, built elsewhere the evening before, which fits.
 
 ### ⚠️ Never probe a running bot with getUpdates
 
