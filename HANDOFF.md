@@ -8,12 +8,14 @@ The rebuilt app is **deployed and running** at
 https://shrimpzone-timetracker.fly.dev against an **empty** Neon database.
 Nothing has been cut over. No staff have been told anything.
 
-🔴 **Cutover is BLOCKED.** The legacy bot was stopped on *this* machine on
-2026-08-21, but a live bot is still polling the token **from another machine**
-(proved 2026-08-22 — see the BLOCKER section). Telegram attendance is being
-recorded into that machine's SQLite file, so the `time_tracker.db` here is a
-stale copy and `migrate_sqlite_to_neon.py` would migrate the wrong data.
-**Find that machine and retrieve its database before doing anything else.**
+✅ **The missing bot was found (2026-08-22): it runs on a Vultr VPS**,
+`67.219.100.235`, as the systemd unit `time-tracker-bot.service`. Stopping it
+on this machine on 2026-08-21 never touched it. Its database has been merged
+into `time_tracker_MERGED.db` via `scripts/merge_vps_snapshot.py`.
+
+⚠️ **Before cutover: re-run that merge against a fresh VPS snapshot**, then
+point the migration at the merged file — `migrate_sqlite_to_neon.py` defaults
+to `time_tracker.db`, which is now the OLD copy. See the FOUND section.
 
 ## What is live and verified
 
@@ -284,75 +286,50 @@ Backups land in `backups/`, which is gitignored. They are real pay data -
 never commit one. Retention is unbounded; the files are small (tens of KB), so
 this is fine for years, but nothing prunes them.
 
-## 🔴 BLOCKER: a second bot is live on another machine (proved 2026-08-22)
+## ✅ FOUND: the bot runs on a Vultr VPS (2026-08-22)
 
-**Do not cut over until the source-of-truth question below is answered.**
+Not another PC — a **VPS**, which is why it never stopped and why nobody
+noticed.
 
-### The proof
+| | |
+|---|---|
+| Host | `67.219.100.235` (Vultr), hostname **`telegram`** |
+| Path | `/root/time_tracker/` |
+| Database | `/root/time_tracker/time_tracker.db` |
+| Started by | **systemd** — `time-tracker-bot.service` and `time-tracker-dashboard.service` |
+| SSH | key `~/.ssh/id_ed25519` on THANH; `known_hosts` written 2026-06-11 19:27 |
 
-With **zero** bot processes on this machine and five full minutes of silence
-beforehand, a held `getUpdates` long-poll was **terminated after 5 seconds by
-another getUpdates request**. An earlier run was terminated after 32 s.
+The timing is exact: this machine's last shift is **2026-06-11 19:08**, and
+`known_hosts` was written **19 minutes later**. The bot was moved to the VPS
+that evening and has recorded there ever since.
 
-That is conclusive in a way a plain 409 is not. A lingering registration from a
-force-killed process can only *reject* a new request up front; it cannot
-*issue* a fresh request 5 or 32 seconds later and take the slot away. Something
-alive did that, and it is not on this machine.
+Because it is a systemd unit it restarts on boot and on failure. Stopping it
+means `systemctl stop time-tracker-bot` (and `--now disable` to keep it off) —
+closing a window does nothing.
 
-Also ruled out, individually: the Fly app (`fly logs` shows only `/healthz`,
-and `build_application` sets `.updater(None)`, so it is structurally incapable
-of polling), the local uvicorn processes (same code path), and a duplicate
-local process (`bot.log` carries exactly one startup line; the two PIDs are the
-Windows Store Python shim and its child).
+### The two copies had genuinely diverged — a merge, not a copy
 
-### What it means for cutover
+Local had 102 shifts (→ 08-20), the VPS 108 (→ 08-22), with **99 shared**:
 
-**That machine's SQLite file is the real payroll record.** `time_tracker.db`
-here has been frozen at 102 timesheets, newest **2026-08-20**, which is
-evidence that attendance has been going somewhere else, not evidence that none
-was recorded.
+* **only on the VPS**: #106–#110 (recorded after the 08-20 copy) and **#19**,
+  the row deleted here on owner instruction — a plain copy would resurrect it;
+* **shared id, different content**: #103, #104, #105, hand-corrected here on
+  08-20. Individually they move a lot (#103 −1.44 h, #105 +1.46 h) but the
+  three together total **9.60 h either way — a $0.03 difference**. The edits
+  redistributed hours between shifts; they did not change what anyone is paid.
 
-`scripts/migrate_sqlite_to_neon.py` reads `time_tracker.db` **in this
-directory**. Running it as-is would migrate the stale copy and silently discard
-every shift recorded on the other machine since 2026-08-20, including any pay
-owed. The three "stale open shifts" may also already be settled over there.
+**Owner ruling 2026-08-22:** local hand-corrections win, the deletion of #19
+stands, and the VPS supplies shifts recorded after the copy.
 
-### The database lineage — NOT a three-month split brain
+`scripts/merge_vps_snapshot.py` implements exactly that (7 tests). Both inputs
+are read-only; it refuses to overwrite an existing output; and it **refuses
+outright** if `users` or `advances` disagree on a shared key, because those are
+pay rates and advances and no script should pick a winner for them.
 
-An earlier version of this section claimed the two copies had diverged since
-June. The file forensics say otherwise, and the gap is small:
-
-| File | Content | What it is |
-|---|---|---|
-| `time_tracker_local_old_20260820_135726.db` | 19 shifts, 3 users, 06-01 → **06-11** (mtime 11 Jun) | THIS machine's own database. It stopped recording on 11 June. |
-| `time_tracker.db` | 102 shifts, 4 users, 06-01 → **08-20** | The OTHER machine's database, copied here **2026-08-20 13:57**, when the local one was renamed aside. |
-
-So the local file already contains the other machine's history through
-2026-08-20. Comparing the two, only **two** shifts exist solely in the old
-local copy, and both are accounted for: shift 19 (the 16.5 h overnight row
-deleted on owner instruction 2026-08-20) and a dangling never-closed shift for
-`6393446109` at 2026-06-11 19:08. Nothing was lost in the swap.
-
-**The real gap is therefore only 2026-08-20 → now** — whatever the other
-machine has recorded since the copy was taken. Retrieve that file, confirm it
-is a superset of this one, then use it. Keep `time_tracker.db` as it stands as
-the fallback until that check passes; do not delete it.
-
-### Who to ask
-
-`ADMIN_CHAT_ID=6393446109,298764295` — two admins:
-
-| Telegram id | Name | Role | Shifts here |
-|---|---|---|---|
-| `6393446109` | V Kai | ADMIN, $18.00/h | **65** (2026-06-01 → 08-20) |
-| `298764295` | Thanh Nguyen | ADMIN, $0.00/h | 2, both on 2026-06-10 (setup tests) |
-| `8865482786` | Tyler Dao | EMPLOYEE, $18.00/h | 30 |
-| `7725821590` | Kayn Tran | EMPLOYEE, $16.00/h | 5 |
-
-This machine belongs to Thanh (`THANH` / `tthan`), who has 2 test shifts. The
-heavy user and the other admin is **V Kai** — the most likely owner of the
-machine still polling. The transfer package that seeded this folder arrived by
-Discord on 2026-06-10, built elsewhere the evening before, which fits.
+⚠️ **Re-run the merge at cutover with a FRESH snapshot.** `time_tracker_MERGED.db`
+in the repo is a point-in-time result from 2026-08-22 and V Kai was mid-shift
+(#110 open) when it was taken. The snapshot + merge commands are in the
+script's docstring.
 
 ### ⚠️ Never probe a running bot with getUpdates
 
