@@ -287,6 +287,17 @@ def _reset_sequence_sql(table: str):
 
 
 def main() -> int:
+    # Read .env by explicit path, not by walking up from the cwd: load_dotenv()
+    # resolves relative to the CALLING FILE's directory, so a bare call finds
+    # nothing when this is run from elsewhere and the URL silently comes back
+    # empty. Cost an hour on 2026-08-22 in a different script.
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    except ModuleNotFoundError:
+        pass
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", default="time_tracker.db", type=Path)
     parser.add_argument("--dry-run", action="store_true", help="verify only, write nothing")
@@ -323,11 +334,18 @@ def main() -> int:
 
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
-        print("\nDATABASE_URL is not set. Re-run with it, or pass --dry-run.")
+        print("\nDATABASE_URL is not set. Put it in .env, or pass --dry-run.")
         return 1
 
-    load(plan, database_url)
-    print(f"Loaded into {database_url.split('@')[-1]}")
+    # Neon hands out a bare postgresql:// URL, which SQLAlchemy reads as
+    # psycopg2 -- not installed and not wanted here. app/config.py rewrites it;
+    # so must every other entry point, or this works in tests and fails against
+    # the real database. connectable_url also pins IPv4, because IPv6 to Neon
+    # times out from the owner's machine.
+    from backup_neon import connectable_url, safe_url
+
+    load(plan, connectable_url(database_url))
+    print(f"Loaded into {safe_url(database_url)}")
     return 0
 
 

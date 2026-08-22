@@ -17,6 +17,40 @@ into `time_tracker_MERGED.db` via `scripts/merge_vps_snapshot.py`.
 point the migration at the merged file — `migrate_sqlite_to_neon.py` defaults
 to `time_tracker.db`, which is now the OLD copy. See the FOUND section.
 
+## 🟡 CUTOVER IS HALF DONE — one command left (2026-08-22)
+
+Done, in order, all verified:
+
+1. VPS bot **stopped and disabled** (`systemctl stop/disable time-tracker-bot`).
+2. Final snapshot taken from the VPS and merged: **107 shifts** in
+   `time_tracker_MERGED.db` (5 brought over, 3 local corrections kept, #19 still
+   deleted).
+3. Migration **run for real** into Neon — verification passed: row counts,
+   primary keys, timestamps and every employee-month total reconcile.
+   Neon now holds 4 users, 4 rates, **107 timesheets**, 6 advances.
+4. First real Neon backup taken and **verified**:
+   `backups/time_tracker_20260822T082613Z.db`.
+
+**REMAINING — and until it runs, NOBODY can clock in:** the webhook is not
+registered, and the legacy bot is stopped, so Telegram updates go nowhere.
+
+    .\.venv\Scripts\python.exe scripts\set_webhook.py --set
+
+(An automated agent was blocked from running this by a safety classifier — it
+registers a webhook using a secret. Run it yourself.)
+
+**If you are not ready to finish now, restore the old system instead:**
+
+    ssh root@67.219.100.235 'systemctl enable --now time-tracker-bot'
+
+That brings the legacy bot back and staff carry on as before. Neon then goes
+stale and the migration must be redone — `scripts/reset_target_db.py --yes`
+clears Neon first, because the migration refuses a target that already holds
+timesheets.
+
+**After the webhook is set:** tell staff to send `/start` and tap
+**Open my timesheet**.
+
 ## What is live and verified
 
 | Thing | State |
