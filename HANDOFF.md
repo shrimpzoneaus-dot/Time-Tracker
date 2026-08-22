@@ -317,9 +317,29 @@ directory**. Running it as-is would migrate the stale copy and silently discard
 every shift recorded on the other machine since 2026-08-20, including any pay
 owed. The three "stale open shifts" may also already be settled over there.
 
+### 🔴 It is a SPLIT BRAIN, not a stale copy — do not overwrite either file
+
+`time_tracker_transfer_package.zip` in `Downloads` is the bundle that created
+this copy. Its internal timestamps date the split exactly: the package was
+built on the ORIGINAL machine on **2026-06-09 17:20**, including a
+`time_tracker.db` of 28,672 bytes, and was unpacked here on **2026-06-10
+12:50**.
+
+Since then **this** machine's database recorded **91 timesheets dated
+2026-06-10 or later** (102 total, 2026-06-01 → 2026-08-20). The other machine
+is polling Telegram *now*, so it is writing to its own file as well.
+
+**Neither database is complete.** Copying the remote file over the local one
+would destroy those 91 rows; leaving the local one in place loses whatever the
+remote has recorded. **Do not overwrite either.** Copy the remote file here as
+`time_tracker_REMOTE.db` and reconcile the two before any migration — compare
+per-employee-month totals, not just row counts, because an overlapping shift
+id means different things in each file.
+
 **Next step: find the machine running `run_time_bot.bat` /
-`time_tracking_bot.py`, stop it, and copy its `time_tracker.db` here.** Only
-then does the cutover procedure below apply.
+`time_tracking_bot.py`, close its window (clean exit), and bring its
+`time_tracker.db` here under a different name.** Only then does the cutover
+procedure below apply.
 
 ### ⚠️ Never probe a running bot with getUpdates
 
